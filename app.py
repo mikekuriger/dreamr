@@ -9,6 +9,11 @@ import openai
 import os
 import bcrypt
 from datetime import datetime
+import uuid
+import requests
+from prompts import CATEGORY_PROMPTS
+import traceback
+
 
 
 client = OpenAI()
@@ -17,11 +22,11 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
 app.config.from_pyfile('config.py')
-# app.config.from_object("config.Config")
-CORS(app, supports_credentials=True)
+CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "http://localhost:5173"])
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
+login_manager.init_app(app)
 
 # Models
 class User(db.Model, UserMixin):
@@ -38,8 +43,6 @@ class User(db.Model, UserMixin):
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
 
 
-from datetime import datetime
-
 class Dream(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -48,6 +51,19 @@ class Dream(db.Model):
     image_url = db.Column(db.Text)                 # original OpenAI URL (optional)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def convert_dream_to_image_prompt(message):
+    prompt = (
+        "Rewrite the following dream description into a vivid, detailed visual prompt suitable for an AI image generator. "
+        "Focus on the visual elements, scenery, atmosphere, and objects. Do not include dialogue or analysis.\n\n"
+        f"Dream: {message}"
+    )
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
 
 
 @login_manager.user_loader
@@ -78,7 +94,11 @@ def register():
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify({"message": "User registered"})
+    login_user(user)
+    return jsonify({
+      "message": "Registration successful",
+      "first_name": user.first_name 
+    })
 
 @app.route("/api/login", methods=["POST"])
 def login():
@@ -86,10 +106,10 @@ def login():
     email = data.get("email")
     password = data.get("password")
     user = User.query.filter_by(email=email).first()
-    # if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password)):
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
         return jsonify({"error": "Invalid credentials"}), 401
-    login_user(user)
+    # login_user(user)
+    login_user(user, remember=True)
     return jsonify({"message": "Logged in"})
 
 @app.route("/api/logout", methods=["POST"])
@@ -102,50 +122,81 @@ def logout():
 @login_required
 def chat():
     data = request.get_json()
-    user_id = current_user.id
-    category = data.get("category", "dream")
     message = data.get("message")
+    # category = data.get("category", "dream")
 
-    if not message or not category:
-        return jsonify({"error": "Missing message or category"}), 400
+    if not message:
+        return jsonify({"error": "Missing dream message."}), 400
+
+    # if category not in CATEGORY_PROMPTS:
+    #     return jsonify({"error": "Invalid category"}), 400
 
     try:
-        # Start session with system prompt if needed
-        session = get_session(user_id)
-        if not session:
-            add_to_session(user_id, "system", CATEGORY_PROMPTS.get(category, "You are a professional dream analyst. Do not answer questions outside of dream interpretation."))
-
-        add_to_session(user_id, "user", message)
-
-        chat_response = client.chat.completions.create(
+        # 1. Generate dream analysis
+        dream_prompt = (
+            "You are a professional dream analyst. Do not answer questions outside of dream interpretation. "
+            "Keep response clear and thoughtful. Politely decline unrelated questions."
+        )
+        prompt = f"{dream_prompt}\n\n{message}"
+        
+        response = client.chat.completions.create(
             model="gpt-4o",
-            messages=get_session(user_id)
+            messages=[{"role": "user", "content": prompt}]
         )
-
-        reply = chat_response.choices[0].message.content.strip()
-        add_to_session(user_id, "assistant", reply)
-
-        # Optional image generation
-        image_prompt = f"Surreal dream art: {message}"
-        image_response = client.images.generate(
-            prompt=image_prompt,
-            n=1,
-            size="512x512"
+        
+        if not response.choices or not response.choices[0].message:
+            return jsonify({"error": "AI response was empty"}), 500
+        
+        analysis = response.choices[0].message.content.strip()
+        
+        # 2. Try to generate image (non-fatal if it fails)
+        image_url = None
+        image_file = None
+        try:
+            image_prompt = convert_dream_to_image_prompt(message)
+            print(f"[DEBUG] image prompt: ${image_prompt}")
+            print("[DEBUG] Sending image generation request...")
+            image_response = client.images.generate(
+                model="dall-e-3",
+                prompt=image_prompt,
+                n=1,
+                size="1024x1024",
+                response_format="url"
+            )
+            print(f"[DEBUG] Image response: {image_response}")
+            image_url = image_response.data[0].url
+        
+            filename = f"{uuid.uuid4().hex}.png"
+            image_path = os.path.join("static", "images", "dreams", filename)
+            os.makedirs(os.path.dirname(image_path), exist_ok=True)
+            img_data = requests.get(image_url).content
+            with open(image_path, "wb") as f:
+                f.write(img_data)
+            image_file = filename
+        
+        except Exception as e:
+            print(f"[WARN] Image generation failed: {e}")
+            # Not fatal, so we continue
+        
+        # 3. Save dream
+        dream = Dream(
+            user_id=current_user.id,
+            text=message,
+            analysis=analysis,
+            image_url=image_url,
+            image_file=image_file
         )
-        image_url = image_response.data[0].url
-
-        # Save to DB
-        dream = Dream(user_id=user_id, text=message, image_url=image_url)
         db.session.add(dream)
         db.session.commit()
-
+        
         return jsonify({
-            "reply": reply,
-            "image_url": image_url
+            "analysis": analysis,
+            "image": f"/static/images/dreams/{image_file}" if image_file else None
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+      traceback.print_exc()
+      return jsonify({"error": str(e)}), 500
 
 @app.route("/api/dreams", methods=["GET"])
 @login_required
@@ -155,7 +206,8 @@ def get_dreams():
         {
             "id": d.id,
             "text": d.text,
-            "image_url": d.image_url,
+            "analysis": d.analysis,
+            "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "created_at": d.created_at.isoformat() if d.created_at else None
         } for d in dreams
     ])
@@ -163,7 +215,10 @@ def get_dreams():
 @app.route("/api/check_auth", methods=["GET"])
 def check_auth():
     if current_user.is_authenticated:
-        return jsonify({"authenticated": True})
+        return jsonify({
+            "authenticated": True,
+            "first_name": current_user.first_name
+        })
     return jsonify({"authenticated": False}), 401
 
 
