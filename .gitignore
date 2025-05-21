@@ -2,3 +2,7 @@
 __pycache__
 config.py
 todo
+static/*
+getlog
+dreamer.log
+Untitled*
