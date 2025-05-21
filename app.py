@@ -11,8 +11,24 @@ import bcrypt
 from datetime import datetime
 import uuid
 import requests
-from prompts import CATEGORY_PROMPTS
 import traceback
+import logging
+import base64
+
+
+
+log_file_path = "dreamr.log"
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)  # or INFO if you want less detail
+# Clear any existing handlers (especially important when running under Gunicorn)
+logger.handlers = []
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+file_handler = logging.FileHandler(log_file_path)
+file_handler.setFormatter(formatter)
+stream_handler = logging.StreamHandler()  # stdout (journalctl/systemd)
+stream_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
 
 
 
@@ -55,10 +71,20 @@ class Dream(db.Model):
 
 def convert_dream_to_image_prompt(message):
     prompt = (
-        "Rewrite the following dream description into a vivid, detailed visual prompt suitable for an AI image generator. "
-        "Focus on the visual elements, scenery, atmosphere, and objects. Do not include dialogue or analysis.\n\n"
+        "Rewrite the following dream description into a vivid, detailed visual prompt suitable for AI image generation. "
+        "Focus on visual elements, scenery, atmosphere, and objects. Avoid dialogue, violence, or banned words. "
+        "Use visual metaphor and artistic style to capture emotion. "
+        "Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 2000 characters.\n\n"
         f"Dream: {message}"
     )
+    # prompt = (
+    #     "Rewrite the following dream description into a vivid, detailed visual prompt suitable for an AI image generator. "
+    #     "Focus on the visual elements, scenery, atmosphere, and objects. "
+    #     "Do not include dialogue or analysis. Use visual metaphor and artistic style to capture emotion. "
+    #     "Convert harsh elements into metaphor, symbolism, or stylized visuals and do not use prohibited words. "
+    #     "Keep the response 500 characters or below.\n\n"
+    #     f"Dream: {message}"
+    # )
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}]
@@ -70,6 +96,13 @@ def convert_dream_to_image_prompt(message):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+
+@app.route("/api/images", methods=["GET"])
+def get_images():
+    IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
+    files = os.listdir(IMAGE_DIR)
+    return jsonify([f for f in files if f.endswith(".png")])
+    
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.get_json()
@@ -100,6 +133,7 @@ def register():
       "first_name": user.first_name 
     })
 
+    
 @app.route("/api/login", methods=["POST"])
 def login():
     data = request.get_json()
@@ -118,90 +152,147 @@ def logout():
     logout_user()
     return jsonify({"message": "Logged out"})
 
+
+
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def chat():
+    logger.info(" /api/chat called")
     data = request.get_json()
-    message = data.get("message")
-    # category = data.get("category", "dream")
+    logger.debug(f"Received JSON: {data}")
 
+    message = data.get("message")
     if not message:
+        logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
 
-    # if category not in CATEGORY_PROMPTS:
-    #     return jsonify({"error": "Invalid category"}), 400
-
     try:
-        # 1. Generate dream analysis
-        dream_prompt = (
-            "You are a professional dream analyst. Do not answer questions outside of dream interpretation. "
-            "Keep response clear and thoughtful. Politely decline unrelated questions."
-        )
-        prompt = f"{dream_prompt}\n\n{message}"
-        
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        
-        if not response.choices or not response.choices[0].message:
-            return jsonify({"error": "AI response was empty"}), 500
-        
-        analysis = response.choices[0].message.content.strip()
-        
-        # 2. Try to generate image (non-fatal if it fails)
-        image_url = None
-        image_file = None
-        try:
-            image_prompt = convert_dream_to_image_prompt(message)
-            print(f"[DEBUG] image prompt: ${image_prompt}")
-            print("[DEBUG] Sending image generation request...")
-            image_response = client.images.generate(
-                model="dall-e-3",
-                prompt=image_prompt,
-                n=1,
-                size="1024x1024",
-                response_format="url"
-            )
-            print(f"[DEBUG] Image response: {image_response}")
-            image_url = image_response.data[0].url
-        
-            filename = f"{uuid.uuid4().hex}.png"
-            image_path = os.path.join("static", "images", "dreams", filename)
-            os.makedirs(os.path.dirname(image_path), exist_ok=True)
-            img_data = requests.get(image_url).content
-            with open(image_path, "wb") as f:
-                f.write(img_data)
-            image_file = filename
-        
-        except Exception as e:
-            print(f"[WARN] Image generation failed: {e}")
-            # Not fatal, so we continue
-        
-        # 3. Save dream
+        # Step 1: Save dream text immediately
+        logger.info("Saving dream to database...")
         dream = Dream(
             user_id=current_user.id,
             text=message,
-            analysis=analysis,
-            image_url=image_url,
-            image_file=image_file
+            created_at=datetime.utcnow()
         )
         db.session.add(dream)
         db.session.commit()
+        logger.debug(f"Dream saved with ID: {dream.id}")
+
+        # Step 2: AI Analysis
+        dream_prompt = (
+            "You are a professional dream analyst. Do not answer questions outside of dream interpretation. "
+            "Keep response clear and thoughtful. Politely decline unrelated questions. "
+        )
+        prompt = f"{dream_prompt}\n\n{message}"
+        logger.info("Sending prompt to OpenAI:")
+        logger.debug(f"Prompt: {prompt}")
+
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        if not response.choices or not response.choices[0].message:
+            logger.debug("[ERROR] AI response was empty.")
+            return jsonify({"error": "AI response was empty"}), 500
+
+        analysis = response.choices[0].message.content.strip()
+        dream.analysis = analysis
+        db.session.commit()
+
+        logger.debug(f"Analysis: {analysis}")
+
+        # Step 3: Try image generation (optional) model="dall-e-3"
+        try:
+           logger.info("Converting dream to image prompt...")
+           image_prompt = convert_dream_to_image_prompt(message)
+           logger.debug(f"Image prompt: {image_prompt}")
+           logger.info("Sending image generation request...")
+
+           image_response = client.images.generate(
+               model="dall-e-3",
+               prompt=image_prompt,
+               n=1,
+               size="1024x1024",
+               response_format="url"
+           )
+           image_url = image_response.data[0].url
+           logger.debug(f"Image URL received: {image_url}")
+
+           filename = f"{uuid.uuid4().hex}.png"
+           image_path = os.path.join("static", "images", "dreams", filename)
+           os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+           # Save the image to a file
+
+           img_data = requests.get(image_url).content
+           with open(image_path, "wb") as f:
+               f.write(img_data)
+
+           dream.image_url = image_url
+           dream.image_file = filename
+           logger.info(f"Image saved to {image_path}")
+
+        # # Step 3: Try image generation (optional) model="gpt-image-1"
+        # try:
+        #     logger.info("Converting dream to image prompt...")
+        #     image_prompt = convert_dream_to_image_prompt(message)
+        #     logger.debug(f"Image prompt: {image_prompt}")
+        #     logger.info("Sending image generation request...")
         
+        #     image_response = client.images.generate(
+        #         model="gpt-image-1",
+        #         size="1024x1024",
+        #         prompt=image_prompt
+        #     )
+        #     image_base64 = image_response.data[0].b64_json
+        #     image_bytes = base64.b64decode(image_base64)
+        
+        #     filename = f"{uuid.uuid4().hex}.png"
+        #     STATIC_IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
+        #     image_path = os.path.join(STATIC_IMAGE_DIR, filename)
+        #     os.makedirs(STATIC_IMAGE_DIR, exist_ok=True)
+        
+        #     with open(image_path, "wb") as f:
+        #         f.write(image_bytes)
+        
+        #     dream.image_file = filename
+        #     logger.info(f"Image saved to {image_path}")
+
+
+        
+        except openai.OpenAIError as e:
+            logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+            
+        except requests.RequestException as e:
+            logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+
+        except Exception as img_error:
+            logger.warning("Image generation failed", exc_info=True)
+
+        db.session.commit()
+        logger.info("Dream successfully saved to database.")
+
         return jsonify({
-            "analysis": analysis,
-            "image": f"/static/images/dreams/{image_file}" if image_file else None
+            "analysis": dream.analysis,
+            "image": f"/static/images/dreams/{dream.image_file}" if dream.image_file else None
         })
 
     except Exception as e:
-      traceback.print_exc()
-      return jsonify({"error": str(e)}), 500
+        db.session.rollback()
+        logger.debug("Exception occurred during dream processing:")
+        logger.exception("Exception occurred during dream processing")
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
-    dreams = Dream.query.filter_by(user_id=current_user.id).all()
+    dreams = Dream.query.filter_by(user_id=current_user.id) \
+                        .order_by(Dream.created_at.desc()) \
+                        .all()
+    #dreams = Dream.query.filter_by(user_id=current_user.id).all()
     return jsonify([
         {
             "id": d.id,
