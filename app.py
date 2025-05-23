@@ -1,5 +1,6 @@
 ### File: app.py
 
+from sqlalchemy import func
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
@@ -8,12 +9,17 @@ from openai import OpenAI
 import openai
 import os
 import bcrypt
-from datetime import datetime
 import uuid
 import requests
 import traceback
 import logging
 import base64
+from zoneinfo import ZoneInfo
+from datetime import datetime, timezone, timedelta
+import re
+import traceback
+from flask_migrate import Migrate
+from flask_mail import Message, Mail
 
 
 
@@ -43,6 +49,8 @@ CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "http:/
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.init_app(app)
+migrate = Migrate(app, db)
+mail = Mail(app)
 
 # Models
 class User(db.Model, UserMixin):
@@ -51,7 +59,6 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(128), nullable=False)
-
     first_name = db.Column(db.String(50), nullable=True)
     birthdate = db.Column(db.Date, nullable=True)
     gender = db.Column(db.String(20), nullable=True)  # e.g., "male", "female", "nonbinary", "prefer not to say"
@@ -59,14 +66,213 @@ class User(db.Model, UserMixin):
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
 
 
+class PendingUser(db.Model):
+    __tablename__ = 'pendingusers'
+
+    uuid = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(128), nullable=False)
+    first_name = db.Column(db.String(50), nullable=True)
+    signup_date = db.Column(db.DateTime, default=db.func.now())
+    timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
+    expires_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + timedelta(hours=24))
+
+
 class Dream(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     text = db.Column(db.Text)                      # user's dream text
     analysis = db.Column(db.Text)                  # AI's response
+    summary = db.Column(db.Text)                   # AI's response summarized
     image_url = db.Column(db.Text)                 # original OpenAI URL (optional)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+
+@app.route("/api/images", methods=["GET"])
+def get_images():
+    IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
+    files = os.listdir(IMAGE_DIR)
+    return jsonify([f for f in files if f.endswith(".png")])
+
+
+
+# @app.route("/api/register", methods=["POST"])
+# def register():
+#     data = request.get_json()
+#     first_name = data.get("first_name")
+#     email = data.get("email", "").strip().lower()  # 🔒 Normalize email
+#     gender = data.get("gender")
+#     birthdate = data.get("birthdate")
+#     timezone = data.get("timezone")
+#     password = data.get("password")
+
+#     EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+
+#     # limit length of name
+#     if not first_name or len(first_name.strip()) > 50:
+#         return jsonify({"error": "Name must be 1–50 characters"}), 400
+
+#     # make sure password has 8 characters, not too fussy otherwise
+#     if not password or len(password) < 8:
+#         return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+#     # use regex to validate an email address was input
+#     if not email or not EMAIL_REGEX.match(email.strip().lower()):
+#         return jsonify({"error": "Invalid email address"}), 400
+
+#     # 🔒 Prevent duplicate emails regardless of case
+#     if User.query.filter(func.lower(User.email) == email).first():
+#         return jsonify({"error": "User already exists"}), 400
+    
+        
+#     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+#     user = User(
+#         email=email,
+#         password=hashed,
+#         first_name=first_name,
+#         gender=gender,
+#         timezone=timezone,
+#         birthdate=birthdate  # SQLAlchemy will auto-convert string to date if formatted correctly
+#     )
+#     db.session.add(user)
+#     db.session.commit()
+#     login_user(user)
+#     return jsonify({
+#       "message": "Registration successful",
+#       "first_name": user.first_name 
+#     })
+
+
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json()
+    first_name = data.get("first_name")
+    email = data.get("email", "").strip().lower()
+    gender = data.get("gender")
+    birthdate = data.get("birthdate")
+    timezone_val = data.get("timezone")
+    password = data.get("password")
+
+    EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+
+    if not first_name or len(first_name.strip()) > 50:
+        return jsonify({"error": "Name must be 1–50 characters"}), 400
+
+    if not password or len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    if not email or not EMAIL_REGEX.match(email):
+        return jsonify({"error": "Invalid email address"}), 400
+
+    # Check for duplicates in users and pendingusers (case-insensitive)
+    if User.query.filter(func.lower(User.email) == email).first() or \
+       PendingUser.query.filter(func.lower(PendingUser.email) == email).first():
+        return jsonify({"error": "User already exists or is pending confirmation"}), 400
+
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    token = str(uuid.uuid4())
+    pending = PendingUser(
+        uuid=token,
+        email=email,
+        password=hashed,
+        first_name=first_name,
+        timezone=timezone_val,
+        expires_at=datetime.utcnow() + timedelta(hours=24)
+    )
+
+    db.session.add(pending)
+    db.session.commit()
+    
+    send_confirmation_email(email, token)
+
+    # TODO: Send email with confirmation link
+    # confirm_url = f"https://yourdomain.com/confirm/{token}"
+    # send_email(email, confirm_url)
+
+    return jsonify({
+        "message": "Please check your email to confirm your Dreamr✨account"
+    })
+
+
+def send_confirmation_email(recipient_email, token):
+    confirm_url = f"https://dreamr.zentha.me/confirm/{token}"
+    msg = Message(
+        subject="Confirm your Dreamr✨account",
+        recipients=[recipient_email],
+        body=(
+            f"Welcome to Dreamr!\n\n"
+            f"Click the link below to confirm your account:\n\n"
+            f"{confirm_url}\n\n"
+            f"If you didn't sign up for Dreamr, ignore this message."
+        )
+    )
+    mail.send(msg)
+
+
+@app.route("/api/confirm/<token>", methods=["GET"])
+def confirm_account(token):
+    pending = PendingUser.query.filter_by(uuid=token).first()
+
+    if not pending:
+        return jsonify({"error": "Invalid or expired confirmation link."}), 404
+
+    # Optional: Check if expired
+    if pending.expires_at and pending.expires_at < datetime.utcnow():
+        db.session.delete(pending)
+        db.session.commit()
+        return jsonify({"error": "Confirmation link has expired."}), 410
+
+    # Check if user already exists (paranoia)
+    existing = User.query.filter_by(email=pending.email).first()
+    if existing:
+        db.session.delete(pending)
+        db.session.commit()
+        return jsonify({"message": "Account already confirmed."}), 200
+
+    # Create real user
+    new_user = User(
+        email=pending.email,
+        password=pending.password,
+        first_name=pending.first_name,
+        timezone=pending.timezone,
+        signup_date=datetime.utcnow()
+    )
+
+    db.session.add(new_user)
+    db.session.delete(pending)
+    db.session.commit()
+
+    login_user(new_user, remember=True)
+    # return redirect("/dashboard?confirmed=1")  # this was for when i tested hitting the api directly from the confirmation link
+    return jsonify({"message": "Logged in"})
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json()
+    # email = data.get("email")
+    email = data.get("email", "").strip().lower()  # 🔒 Normalize email
+    password = data.get("password")
+    user = User.query.filter_by(email=email).first()
+    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+        return jsonify({"error": "Invalid credentials"}), 401
+    login_user(user, remember=True)
+    return jsonify({"message": "Logged in"})
+
+
+@app.route("/api/logout", methods=["POST"])
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"message": "Logged out"})
 
 
 def convert_dream_to_image_prompt(message):
@@ -90,67 +296,6 @@ def convert_dream_to_image_prompt(message):
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content.strip()
-
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-
-@app.route("/api/images", methods=["GET"])
-def get_images():
-    IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
-    files = os.listdir(IMAGE_DIR)
-    return jsonify([f for f in files if f.endswith(".png")])
-    
-@app.route("/api/register", methods=["POST"])
-def register():
-    data = request.get_json()
-    first_name = data.get("first_name")
-    email = data.get("email")
-    gender = data.get("gender")
-    birthdate = data.get("birthdate")
-    timezone = data.get("timezone")
-    password = data.get("password")
-    if User.query.filter_by(email=email).first():
-        return jsonify({"error": "User already exists"}), 400
-    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    #hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=4))
-    #hashed = "testhash"
-    user = User(
-        email=email,
-        password=hashed,
-        first_name=first_name,
-        gender=gender,
-        timezone=timezone,
-        birthdate=birthdate  # SQLAlchemy will auto-convert string to date if formatted correctly
-    )
-    db.session.add(user)
-    db.session.commit()
-    login_user(user)
-    return jsonify({
-      "message": "Registration successful",
-      "first_name": user.first_name 
-    })
-
-    
-@app.route("/api/login", methods=["POST"])
-def login():
-    data = request.get_json()
-    email = data.get("email")
-    password = data.get("password")
-    user = User.query.filter_by(email=email).first()
-    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-        return jsonify({"error": "Invalid credentials"}), 401
-    # login_user(user)
-    login_user(user, remember=True)
-    return jsonify({"message": "Logged in"})
-
-@app.route("/api/logout", methods=["POST"])
-@login_required
-def logout():
-    logout_user()
-    return jsonify({"message": "Logged out"})
 
 
 
@@ -182,8 +327,12 @@ def chat():
         dream_prompt = (
             "You are a professional dream analyst. Do not answer questions outside of dream interpretation. "
             "Keep response clear and thoughtful. Politely decline unrelated questions. "
+            "Also, provide a short summary (3–6 words) that captures the dream’s main theme or imagery. Respond in this format:\n\n"
+            "**Analysis:** [detailed analysis]\n"
+            "**Summary:** [short summary]"
         )
-        prompt = f"{dream_prompt}\n\n{message}"
+        # prompt = f"{dream_prompt}\n\n{message}"
+        prompt = f"{dream_prompt}\n\nDream:\n{message}"
         logger.info("Sending prompt to OpenAI:")
         logger.debug(f"Prompt: {prompt}")
 
@@ -196,11 +345,26 @@ def chat():
             logger.debug("[ERROR] AI response was empty.")
             return jsonify({"error": "AI response was empty"}), 500
 
-        analysis = response.choices[0].message.content.strip()
+        # analysis = response.choices[0].message.content.strip()
+
+        content = response.choices[0].message.content.strip()
+        
+        # Split into analysis and summary
+        analysis = None
+        summary = None
+        if "**Analysis:**" in content and "**Summary:**" in content:
+            parts = content.split("**Summary:**")
+            analysis = parts[0].replace("**Analysis:**", "").strip()
+            summary = parts[1].strip()
+        else:
+            analysis = content  # fallback if format is off
+        
         dream.analysis = analysis
+        dream.summary = summary
         db.session.commit()
 
-        logger.debug(f"Analysis: {analysis}")
+        logger.info(f"Summary: {summary}")
+        logger.info(f"Analysis: {analysis}")
 
         # Step 3: Try image generation (optional) model="dall-e-3"
         try:
@@ -289,20 +453,34 @@ def chat():
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
+    user_tz = ZoneInfo(current_user.timezone or "UTC") 
+
     dreams = Dream.query.filter_by(user_id=current_user.id) \
                         .order_by(Dream.created_at.desc()) \
                         .all()
-    #dreams = Dream.query.filter_by(user_id=current_user.id).all()
+    
+    def convert_created_at(dt):
+        try:
+            print(f"Original datetime: {dt} (tzinfo={dt.tzinfo})")
+            return dt.replace(tzinfo=timezone.utc).astimezone(user_tz).isoformat()
+        except Exception as e:
+            print(f"[ERROR] Timestamp conversion failed: {e}")
+            traceback.print_exc()
+            return None
+
     return jsonify([
         {
             "id": d.id,
+            "summary": d.summary,
             "text": d.text,
             "analysis": d.analysis,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
-            "created_at": d.created_at.isoformat() if d.created_at else None
+            "created_at": convert_created_at(d.created_at) if d.created_at else None
         } for d in dreams
     ])
-    
+
+
+
 @app.route("/api/check_auth", methods=["GET"])
 def check_auth():
     if current_user.is_authenticated:
