@@ -1,26 +1,27 @@
 ### File: app.py
-
-from sqlalchemy import func
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
+from authlib.integrations.flask_client import OAuth # for google auth
+from datetime import datetime, timezone, timedelta
 from flask_cors import CORS
+from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
+from flask_mail import Message, Mail
+from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
+from sqlalchemy import func
+from werkzeug.utils import secure_filename
+from zoneinfo import ZoneInfo
+import base64
+import bcrypt
+import json
+import logging
 import openai
 import os
-import bcrypt
-import uuid
+import re
 import requests
 import traceback
-import logging
-import base64
-from zoneinfo import ZoneInfo
-from datetime import datetime, timezone, timedelta
-import re
 import traceback
-from flask_migrate import Migrate
-from flask_mail import Message, Mail
-
+import uuid
 
 
 log_file_path = "dreamr.log"
@@ -36,10 +37,7 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 
-
-
 client = OpenAI()
-
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
@@ -51,6 +49,25 @@ login_manager = LoginManager(app)
 login_manager.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
+
+
+# google auth
+oauth = OAuth(app)
+
+with open('google_oauth_credentials.json') as f:
+    google_creds = json.load(f)
+
+google = oauth.register(
+    name='google',
+    client_id=google_creds['web']['client_id'],
+    client_secret=google_creds['web']['client_secret'],
+    access_token_url='https://oauth2.googleapis.com/token',
+    authorize_url='https://accounts.google.com/o/oauth2/auth',
+    api_base_url='https://www.googleapis.com/oauth2/v2/',
+    client_kwargs={'scope': 'openid email profile'},
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
+)
+
 
 # Models
 class User(db.Model, UserMixin):
@@ -64,6 +81,7 @@ class User(db.Model, UserMixin):
     gender = db.Column(db.String(20), nullable=True)  # e.g., "male", "female", "nonbinary", "prefer not to say"
     signup_date = db.Column(db.DateTime, default=db.func.now())
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
+    avatar_filename = db.Column(db.String(200), nullable=True)
 
 
 class PendingUser(db.Model):
@@ -101,53 +119,108 @@ def get_images():
     return jsonify([f for f in files if f.endswith(".png")])
 
 
+# Profile 
+# profile_bp = Blueprint('profile', __name__)  # no blueprints needed since all code is in one file
+UPLOAD_FOLDER = '/data/dreamr-frontend/static/avatars'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
-# @app.route("/api/register", methods=["POST"])
-# def register():
-#     data = request.get_json()
-#     first_name = data.get("first_name")
-#     email = data.get("email", "").strip().lower()  # 🔒 Normalize email
-#     gender = data.get("gender")
-#     birthdate = data.get("birthdate")
-#     timezone = data.get("timezone")
-#     password = data.get("password")
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-#     EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
+# @profile_bp.route('/api/profile', methods=['GET', 'POST'])
+@app.route('/api/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    user = current_user
 
-#     # limit length of name
-#     if not first_name or len(first_name.strip()) > 50:
-#         return jsonify({"error": "Name must be 1–50 characters"}), 400
+    if request.method == 'GET':
+        return jsonify({
+            'email': user.email,
+            'first_name': user.first_name,
+            'birthdate': user.birthdate.isoformat() if user.birthdate else '',
+            'gender': user.gender,
+            'timezone': user.timezone,
+            'avatar_url': f'/static/avatars/{user.avatar_filename}' if user.avatar_filename else ''
+        })
 
-#     # make sure password has 8 characters, not too fussy otherwise
-#     if not password or len(password) < 8:
-#         return jsonify({"error": "Password must be at least 8 characters"}), 400
+    # POST: update profile
+    data = request.form
+    file = request.files.get('avatar')
 
-#     # use regex to validate an email address was input
-#     if not email or not EMAIL_REGEX.match(email.strip().lower()):
-#         return jsonify({"error": "Invalid email address"}), 400
+    if 'email' in data:
+        user.email = data['email']
+    if 'firstName' in data:
+        user.first_name = data['firstName']
+    if 'birthdate' in data:
+        try:
+            user.birthdate = datetime.strptime(data['birthdate'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid birthdate format'}), 400
+    if 'gender' in data:
+        user.gender = data['gender']
+    if 'timezone' in data:
+        user.timezone = data['timezone']
 
-#     # 🔒 Prevent duplicate emails regardless of case
-#     if User.query.filter(func.lower(User.email) == email).first():
-#         return jsonify({"error": "User already exists"}), 400
-    
-        
-#     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-#     user = User(
-#         email=email,
-#         password=hashed,
-#         first_name=first_name,
-#         gender=gender,
-#         timezone=timezone,
-#         birthdate=birthdate  # SQLAlchemy will auto-convert string to date if formatted correctly
-#     )
-#     db.session.add(user)
-#     db.session.commit()
-#     login_user(user)
-#     return jsonify({
-#       "message": "Registration successful",
-#       "first_name": user.first_name 
-#     })
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        file.save(filepath)
+        user.avatar_filename = filename
 
+    db.session.commit()
+    # return jsonify({'success': True})
+    return jsonify({
+      'first_name': user.first_name
+  })
+
+
+@app.route('/api/gallery/<dream_id>')
+def get_dream_by_id(dream_id):
+    dream = Dream.query.get(dream_id)
+    if not dream:
+        return jsonify({'error': 'Dream not found'}), 404
+
+    return jsonify({
+        'id': dream.id,
+        'summary': dream.summary,
+        'image_file': dream.image_file,
+        'created_at': dream.created_at.isoformat()
+    })
+
+
+@app.route('/gallery/<dream_id>')
+def public_gallery_view(dream_id):
+    dream = Dream.query.get(dream_id)
+    if not dream or not dream.is_shareable:
+        return "Dream not found", 404
+    return render_template("public_dream.html", dream=dream)
+
+  
+@app.route('/login/google')
+def login_google():
+    redirect_uri = url_for('auth_google', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route('/auth/google')
+def auth_google():
+    token = google.authorize_access_token()
+    resp = google.get('userinfo')
+    user_info = resp.json()
+
+    email = user_info['email']
+    name = user_info.get('name')
+
+    # Check if user exists
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+        db.session.add(user)
+        db.session.commit()
+
+    login_user(user)
+    return redirect("/dashboard?confirmed=1")
 
 
 @app.route("/api/register", methods=["POST"])
