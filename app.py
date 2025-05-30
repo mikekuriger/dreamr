@@ -1,6 +1,7 @@
 ### File: app.py
 from authlib.integrations.flask_client import OAuth # for google auth
 from datetime import datetime, timezone, timedelta
+from enum import Enum
 from flask_cors import CORS
 from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
@@ -8,6 +9,7 @@ from flask_mail import Message, Mail
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from openai import OpenAI
+from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
@@ -19,7 +21,7 @@ import openai
 import os
 import re
 import requests
-import traceback
+import string
 import traceback
 import uuid
 
@@ -102,10 +104,21 @@ class Dream(db.Model):
     text = db.Column(db.Text)                      # user's dream text
     analysis = db.Column(db.Text)                  # AI's response
     summary = db.Column(db.Text)                   # AI's response summarized
+    tone = db.Column(db.String(50))                # AI's tone evaluation
     image_url = db.Column(db.Text)                 # original OpenAI URL (optional)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
+class DreamTone(Enum):
+    PEACEFUL = "Peaceful / gentle"
+    EPIC = "Epic / heroic"
+    WHIMSICAL = "Whimsical / surreal"
+    NIGHTMARISH = "Nightmarish / dark"
+    ROMANTIC = "Romantic / nostalgic"
+    ANCIENT = "Ancient / mythic"
+    FUTURISTIC = "Futuristic / uncanny"
+    ELEGANT = "Elegant / ornate"
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -348,30 +361,51 @@ def logout():
     return jsonify({"message": "Logged out"})
 
 
-def convert_dream_to_image_prompt(message):
-    prompt = (
-        "Rewrite the following dream description into a vivid, detailed visual prompt suitable for AI image generation. "
-        "Focus on visual elements, scenery, atmosphere, and objects. Avoid dialogue, violence, or banned words. "
-        "Use visual metaphor and artistic style to capture emotion. "
-        "Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 2000 characters.\n\n"
-        f"Dream: {message}"
-    )
-    # prompt = (
-    #     "Rewrite the following dream description into a vivid, detailed visual prompt suitable for an AI image generator. "
-    #     "Focus on the visual elements, scenery, atmosphere, and objects. "
-    #     "Do not include dialogue or analysis. Use visual metaphor and artistic style to capture emotion. "
-    #     "Convert harsh elements into metaphor, symbolism, or stylized visuals and do not use prohibited words. "
-    #     "Keep the response 500 characters or below.\n\n"
-    #     f"Dream: {message}"
-    # )
+
+def call_openai_with_retry(prompt, retries=3, delay=2):
+    for attempt in range(retries):
+        try:
+            response = openai.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response
+        except Exception as e:
+            logger.warning(f"[GPT Retry] Attempt {attempt+1} failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
+              
+def convert_dream_to_image_prompt(message, tone=None):
+    base_prompt = CATEGORY_PROMPTS["image"]
+  
+    tone = tone.strip() if tone else None
+    logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
+    logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
+
+    style = TONE_TO_STYLE.get(tone, "Artistic vivid style")
+    # style = "Artistic vivid style"
+    # style = "Watercolor fantasy"
+    # style = "Concept art"
+    # style = "Whimsical children’s book"
+    # style = "Dark fairytale"
+    # style = "Impressionist art"
+    # style = "Mythological fantasy"
+    # style = "Cyberdream / retrofuturism"
+    # style = "Art Nouveau or Oil Painting"
+    logger.debug(f"[convert_dream_to_image_prompt] Selected style: {style}")
+
+    full_prompt = f"{base_prompt}\n\nRender the image in the style of \"{style}\".\n\nDream: {message}"
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": full_prompt}]
     )
     return response.choices[0].message.content.strip()
 
 
-
+# dream analysis
 @app.route("/api/chat", methods=["POST"])
 @login_required
 def chat():
@@ -385,7 +419,7 @@ def chat():
         return jsonify({"error": "Missing dream message."}), 400
 
     try:
-        # Step 1: Save dream text immediately
+        # Step 1: Save dream
         logger.info("Saving dream to database...")
         dream = Dream(
             user_id=current_user.id,
@@ -396,130 +430,137 @@ def chat():
         db.session.commit()
         logger.debug(f"Dream saved with ID: {dream.id}")
 
-        # Step 2: AI Analysis
-        dream_prompt = (
-            "You are a professional dream analyst. Do not answer questions outside of dream interpretation. "
-            "Keep response clear and thoughtful. Politely decline unrelated questions. "
-            "Also, provide a short summary (3–6 words) that captures the dream’s main theme or imagery. Respond in this format:\n\n"
-            "**Analysis:** [detailed analysis]\n"
-            "**Summary:** [short summary]"
-        )
-        # prompt = f"{dream_prompt}\n\n{message}"
+        # Step 2: GPT Analysis
+        dream_prompt = CATEGORY_PROMPTS["dream"]
         prompt = f"{dream_prompt}\n\nDream:\n{message}"
         logger.info("Sending prompt to OpenAI:")
-        logger.debug(f"Prompt: {prompt}")
+        logger.debug(f"Dream Analysis Prompt: {prompt}")
 
-        response = openai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}]
-        )
+        response = call_openai_with_retry(prompt)
 
         if not response.choices or not response.choices[0].message:
-            logger.debug("[ERROR] AI response was empty.")
+            logger.error("[ERROR] AI response was empty.")
             return jsonify({"error": "AI response was empty"}), 500
 
-        # analysis = response.choices[0].message.content.strip()
-
         content = response.choices[0].message.content.strip()
-        
-        # Split into analysis and summary
-        analysis = None
-        summary = None
-        if "**Analysis:**" in content and "**Summary:**" in content:
-            parts = content.split("**Summary:**")
-            analysis = parts[0].replace("**Analysis:**", "").strip()
-            summary = parts[1].strip()
+        logger.debug(f"Dream Analysis Reply: {content}")
+
+        analysis = summary = tone = None
+
+        if "**Analysis:**" in content and "**Summary:**" in content and "**Tone:**" in content:
+            try:
+                parts = content.split("**Summary:**")
+                analysis_part = parts[0].replace("**Analysis:**", "").strip()
+                summary_tone_part = parts[1].strip().split("**Tone:**")
+                summary = summary_tone_part[0].strip()
+                tone_candidate = summary_tone_part[1].strip().rstrip(string.punctuation)
+
+                # Validate tone
+                valid_tones = list(TONE_TO_STYLE.keys())
+                if tone_candidate in valid_tones:
+                    tone = tone_candidate
+                else:
+                    logger.warning(f"[WARN] Invalid tone received: {repr(tone_candidate)}")
+                    tone = None
+
+                analysis = analysis_part
+
+            except Exception as parse_err:
+                logger.warning("Failed to parse analysis/summary/tone from AI response", exc_info=True)
+                analysis = content  # fallback
         else:
-            analysis = content  # fallback if format is off
-        
+            logger.warning("[WARN] AI response format missing expected tags — using fallback")
+            analysis = content  # fallback
+
         dream.analysis = analysis
         dream.summary = summary
+        dream.tone = tone
         db.session.commit()
-
-        logger.info(f"Summary: {summary}")
-        logger.info(f"Analysis: {analysis}")
-
-        # Step 3: Try image generation (optional) model="dall-e-3"
-        try:
-           logger.info("Converting dream to image prompt...")
-           image_prompt = convert_dream_to_image_prompt(message)
-           logger.debug(f"Image prompt: {image_prompt}")
-           logger.info("Sending image generation request...")
-
-           image_response = client.images.generate(
-               model="dall-e-3",
-               prompt=image_prompt,
-               n=1,
-               size="1024x1024",
-               response_format="url"
-           )
-           image_url = image_response.data[0].url
-           logger.debug(f"Image URL received: {image_url}")
-
-           filename = f"{uuid.uuid4().hex}.png"
-           image_path = os.path.join("static", "images", "dreams", filename)
-           os.makedirs(os.path.dirname(image_path), exist_ok=True)
-
-           # Save the image to a file
-
-           img_data = requests.get(image_url).content
-           with open(image_path, "wb") as f:
-               f.write(img_data)
-
-           dream.image_url = image_url
-           dream.image_file = filename
-           logger.info(f"Image saved to {image_path}")
-
-        # # Step 3: Try image generation (optional) model="gpt-image-1"
-        # try:
-        #     logger.info("Converting dream to image prompt...")
-        #     image_prompt = convert_dream_to_image_prompt(message)
-        #     logger.debug(f"Image prompt: {image_prompt}")
-        #     logger.info("Sending image generation request...")
-        
-        #     image_response = client.images.generate(
-        #         model="gpt-image-1",
-        #         size="1024x1024",
-        #         prompt=image_prompt
-        #     )
-        #     image_base64 = image_response.data[0].b64_json
-        #     image_bytes = base64.b64decode(image_base64)
-        
-        #     filename = f"{uuid.uuid4().hex}.png"
-        #     STATIC_IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
-        #     image_path = os.path.join(STATIC_IMAGE_DIR, filename)
-        #     os.makedirs(STATIC_IMAGE_DIR, exist_ok=True)
-        
-        #     with open(image_path, "wb") as f:
-        #         f.write(image_bytes)
-        
-        #     dream.image_file = filename
-        #     logger.info(f"Image saved to {image_path}")
-
-
-        
-        except openai.OpenAIError as e:
-            logger.error(f"[ERROR] OpenAI image generation failed: {e}")
-            
-        except requests.RequestException as e:
-            logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
-
-        except Exception as img_error:
-            logger.warning("Image generation failed", exc_info=True)
-
-        db.session.commit()
-        logger.info("Dream successfully saved to database.")
+        logger.info("Dream analysis saved to database.")
 
         return jsonify({
-            "analysis": dream.analysis,
-            "image": f"/static/images/dreams/{dream.image_file}" if dream.image_file else None
+            "analysis": analysis,
+            "summary": summary,
+            "tone": tone,
+            "dream_id": dream.id
         })
 
     except Exception as e:
         db.session.rollback()
-        logger.debug("Exception occurred during dream processing:")
-        logger.exception("Exception occurred during dream processing")
+        logger.error("Exception occurred during dream processing:", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+      
+
+@app.route("/api/image_generate", methods=["POST"])
+@login_required
+def generate_dream_image():
+    logger.info(" /api/image_generate called")
+    data = request.get_json()
+    dream_id = data.get("dream_id")
+
+    if not dream_id:
+        logger.debug("[WARN] Missing dream ID.")
+        return jsonify({"error": "Missing dream ID."}), 400
+
+    dream = Dream.query.get(dream_id)
+
+    if not dream or dream.user_id != current_user.id:
+        return jsonify({"error": "Dream not found or unauthorized"}), 404
+
+    message = dream.text
+    tone = dream.tone
+
+    try:
+        logger.info("Converting dream to image prompt...")
+        image_prompt = convert_dream_to_image_prompt(message, tone)
+        logger.debug(f"Image prompt: {image_prompt}")
+        logger.info("Sending image generation request...")
+
+        image_response = client.images.generate(
+            model="dall-e-3",
+            prompt=image_prompt,
+            n=1,
+            size="1024x1024",
+            response_format="url"
+        )
+        image_url = image_response.data[0].url
+        logger.debug(f"Image URL received: {image_url}")
+
+        filename = f"{uuid.uuid4().hex}.png"
+        image_path = os.path.join("static", "images", "dreams", filename)
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+        # Save the image to a file
+        img_data = requests.get(image_url).content
+        with open(image_path, "wb") as f:
+            f.write(img_data)
+
+        dream.image_url = image_url
+        dream.image_file = filename
+        logger.info(f"Image saved to {image_path}")
+
+        db.session.commit()
+        logger.info("Dream successfully updated with image.")
+
+        return jsonify({
+            "analysis": dream.analysis,
+            "image": f"/static/images/dreams/{dream.image_file}"
+        })
+
+    except openai.OpenAIError as e:
+        logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+
+    except requests.RequestException as e:
+        logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+
+    except Exception as img_error:
+        logger.warning("Image generation failed", exc_info=True)
+
+    # If we hit an exception but didn't return above:
+    db.session.rollback()
+    return jsonify({"error": "Image generation failed"}), 500
+
 
 
 
