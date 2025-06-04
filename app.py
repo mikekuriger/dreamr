@@ -8,13 +8,16 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from flask_mail import Message, Mail
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from langdetect import detect
 from openai import OpenAI
+from PIL import Image
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
 import base64
 import bcrypt
+import io
 import json
 import logging
 import openai
@@ -80,9 +83,10 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(128), nullable=False)
     first_name = db.Column(db.String(50), nullable=True)
     birthdate = db.Column(db.Date, nullable=True)
-    gender = db.Column(db.String(20), nullable=True)  # e.g., "male", "female", "nonbinary", "prefer not to say"
+    gender = db.Column(db.String(20), nullable=True)  # e.g., "male", "female", prefer not to say"
     signup_date = db.Column(db.DateTime, default=db.func.now())
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
+    language = db.Column(db.String(10), nullable=True, default='en')
     avatar_filename = db.Column(db.String(200), nullable=True)
 
 
@@ -95,6 +99,7 @@ class PendingUser(db.Model):
     first_name = db.Column(db.String(50), nullable=True)
     signup_date = db.Column(db.DateTime, default=db.func.now())
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
+    language = db.Column(db.String(10), nullable=True, default='en')
     expires_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + timedelta(hours=24))
 
 
@@ -110,21 +115,21 @@ class Dream(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-class DreamTone(Enum):
-    PEACEFUL = "Peaceful / gentle"
-    EPIC = "Epic / heroic"
-    WHIMSICAL = "Whimsical / surreal"
-    NIGHTMARISH = "Nightmarish / dark"
-    ROMANTIC = "Romantic / nostalgic"
-    ANCIENT = "Ancient / mythic"
-    FUTURISTIC = "Futuristic / uncanny"
-    ELEGANT = "Elegant / ornate"
+# class DreamTone(Enum):
+#     PEACEFUL = "Peaceful / gentle"
+#     EPIC = "Epic / heroic"
+#     WHIMSICAL = "Whimsical / surreal"
+#     NIGHTMARISH = "Nightmarish / dark"
+#     ROMANTIC = "Romantic / nostalgic"
+#     ANCIENT = "Ancient / mythic"
+#     FUTURISTIC = "Futuristic / uncanny"
+#     ELEGANT = "Elegant / ornate"
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
+# for fetching all file names (not images) to display on landing page
 @app.route("/api/images", methods=["GET"])
 def get_images():
     IMAGE_DIR = "/data/dreamr-frontend/static/images/dreams"
@@ -133,7 +138,6 @@ def get_images():
 
 
 # Profile 
-# profile_bp = Blueprint('profile', __name__)  # no blueprints needed since all code is in one file
 UPLOAD_FOLDER = '/data/dreamr-frontend/static/avatars'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -233,7 +237,8 @@ def auth_google():
         db.session.commit()
 
     login_user(user)
-    return redirect("/dashboard?confirmed=1")
+    # return redirect("/dashboard?confirmed=1")
+    return redirect("/dashboard")
 
 
 @app.route("/api/register", methods=["POST"])
@@ -428,7 +433,8 @@ def chat():
         )
         db.session.add(dream)
         db.session.commit()
-        logger.debug(f"Dream saved with ID: {dream.id}")
+
+        logger.debug(f"Dream saved in with ID: {dream.id}")
 
         # Step 2: GPT Analysis
         dream_prompt = CATEGORY_PROMPTS["dream"]
@@ -490,8 +496,19 @@ def chat():
         logger.error("Exception occurred during dream processing:", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-      
 
+# used to generate smaller images for journal and tiles
+def generate_resized_image(input_path, output_path, size=(48, 48)):
+    try:
+        with Image.open(input_path) as img:
+            img.thumbnail(size)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            img.save(output_path, "PNG")
+            logger.info(f"Resized image saved to {output_path}")
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to create resized image ({size}): {e}")
+
+      
 @app.route("/api/image_generate", methods=["POST"])
 @login_required
 def generate_dream_image():
@@ -529,17 +546,24 @@ def generate_dream_image():
 
         filename = f"{uuid.uuid4().hex}.png"
         image_path = os.path.join("static", "images", "dreams", filename)
+        tile_path = os.path.join("static", "images", "tiles", filename)
+        # thumb_path = os.path.join("static", "images", "thumbs", filename)
+      
         os.makedirs(os.path.dirname(image_path), exist_ok=True)
 
         # Save the image to a file
         img_data = requests.get(image_url).content
         with open(image_path, "wb") as f:
             f.write(img_data)
-
-        dream.image_url = image_url
-        dream.image_file = filename
         logger.info(f"Image saved to {image_path}")
 
+        # Generate resized images
+        generate_resized_image(image_path, tile_path, size=(256, 256))
+        # generate_resized_image(image_path, thumb_path, size=(48, 48))
+      
+        # Save to database
+        dream.image_url = image_url
+        dream.image_file = filename
         db.session.commit()
         logger.info("Dream successfully updated with image.")
 
@@ -589,6 +613,8 @@ def get_dreams():
             "text": d.text,
             "analysis": d.analysis,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
+            "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
+            # "image_thumb": f"/static/images/thumbs/{d.image_file}" if d.image_file else None,
             "created_at": convert_created_at(d.created_at) if d.created_at else None
         } for d in dreams
     ])
