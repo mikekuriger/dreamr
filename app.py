@@ -508,7 +508,7 @@ def generate_resized_image(input_path, output_path, size=(48, 48)):
     except Exception as e:
         logger.error(f"[ERROR] Failed to create resized image ({size}): {e}")
 
-      
+
 @app.route("/api/image_generate", methods=["POST"])
 @login_required
 def generate_dream_image():
@@ -542,31 +542,30 @@ def generate_dream_image():
             response_format="url"
         )
         image_url = image_response.data[0].url
-        logger.debug(f"Image URL received: {image_url}")
+        logger.info(f"Image URL received: {image_url}")
 
         filename = f"{uuid.uuid4().hex}.png"
         image_path = os.path.join("static", "images", "dreams", filename)
         tile_path = os.path.join("static", "images", "tiles", filename)
-        # thumb_path = os.path.join("static", "images", "thumbs", filename)
-      
         os.makedirs(os.path.dirname(image_path), exist_ok=True)
 
-        # Save the image to a file
-        img_data = requests.get(image_url).content
+        # Fetch and save the image with a timeout
+        img_response = requests.get(image_url, timeout=30)
+        img_response.raise_for_status()
+
         with open(image_path, "wb") as f:
-            f.write(img_data)
+            f.write(img_response.content)
         logger.info(f"Image saved to {image_path}")
 
-        # Generate resized images
         generate_resized_image(image_path, tile_path, size=(256, 256))
-        # generate_resized_image(image_path, thumb_path, size=(48, 48))
-      
-        # Save to database
+
+        # Update DB
         dream.image_url = image_url
         dream.image_file = filename
         db.session.commit()
         logger.info("Dream successfully updated with image.")
 
+        logger.info("Returning image response to frontend")
         return jsonify({
             "analysis": dream.analysis,
             "image": f"/static/images/dreams/{dream.image_file}"
@@ -574,16 +573,96 @@ def generate_dream_image():
 
     except openai.OpenAIError as e:
         logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+        return jsonify({"error": "OpenAI image generation failed"}), 502
 
     except requests.RequestException as e:
         logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+        return jsonify({"error": "Failed to fetch image"}), 504
 
     except Exception as img_error:
-        logger.warning("Image generation failed", exc_info=True)
+        logger.exception("Unexpected error during image generation")
+        return jsonify({"error": "Image generation failed"}), 500
 
-    # If we hit an exception but didn't return above:
-    db.session.rollback()
-    return jsonify({"error": "Image generation failed"}), 500
+    finally:
+        db.session.rollback()  # Only triggers on unhandled exception
+
+
+      
+# @app.route("/api/image_generate", methods=["POST"])
+# @login_required
+# def generate_dream_image():
+#     logger.info(" /api/image_generate called")
+#     data = request.get_json()
+#     dream_id = data.get("dream_id")
+
+#     if not dream_id:
+#         logger.debug("[WARN] Missing dream ID.")
+#         return jsonify({"error": "Missing dream ID."}), 400
+
+#     dream = Dream.query.get(dream_id)
+
+#     if not dream or dream.user_id != current_user.id:
+#         return jsonify({"error": "Dream not found or unauthorized"}), 404
+
+#     message = dream.text
+#     tone = dream.tone
+
+#     try:
+#         logger.info("Converting dream to image prompt...")
+#         image_prompt = convert_dream_to_image_prompt(message, tone)
+#         logger.debug(f"Image prompt: {image_prompt}")
+#         logger.info("Sending image generation request...")
+
+#         image_response = client.images.generate(
+#             model="dall-e-3",
+#             prompt=image_prompt,
+#             n=1,
+#             size="1024x1024",
+#             response_format="url"
+#         )
+#         image_url = image_response.data[0].url
+#         logger.debug(f"Image URL received: {image_url}")
+
+#         filename = f"{uuid.uuid4().hex}.png"
+#         image_path = os.path.join("static", "images", "dreams", filename)
+#         tile_path = os.path.join("static", "images", "tiles", filename)
+#         # thumb_path = os.path.join("static", "images", "thumbs", filename)
+      
+#         os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+#         # Save the image to a file
+#         img_data = requests.get(image_url).content
+#         with open(image_path, "wb") as f:
+#             f.write(img_data)
+#         logger.info(f"Image saved to {image_path}")
+
+#         # Generate resized images
+#         generate_resized_image(image_path, tile_path, size=(256, 256))
+#         # generate_resized_image(image_path, thumb_path, size=(48, 48))
+      
+#         # Save to database
+#         dream.image_url = image_url
+#         dream.image_file = filename
+#         db.session.commit()
+#         logger.info("Dream successfully updated with image.")
+
+#         return jsonify({
+#             "analysis": dream.analysis,
+#             "image": f"/static/images/dreams/{dream.image_file}"
+#         })
+
+#     except openai.OpenAIError as e:
+#         logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+
+#     except requests.RequestException as e:
+#         logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+
+#     except Exception as img_error:
+#         logger.warning("Image generation failed", exc_info=True)
+
+#     # If we hit an exception but didn't return above:
+#     db.session.rollback()
+#     return jsonify({"error": "Image generation failed"}), 500
 
 
 
