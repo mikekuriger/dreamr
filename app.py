@@ -110,7 +110,7 @@ class Dream(db.Model):
     analysis = db.Column(db.Text)                  # AI's response
     summary = db.Column(db.Text)                   # AI's response summarized
     tone = db.Column(db.String(50))                # AI's tone evaluation
-    image_url = db.Column(db.Text)                 # original OpenAI URL (optional)
+    hidden = db.Column(db.Boolean, default=False)  # Hides the entry (reversable)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -128,6 +128,7 @@ class Dream(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
 
 # for fetching all file names (not images) to display on landing page
 @app.route("/api/images", methods=["GET"])
@@ -195,7 +196,7 @@ def profile():
 @app.route('/api/gallery/<dream_id>')
 def get_dream_by_id(dream_id):
     dream = Dream.query.get(dream_id)
-    if not dream:
+    if not dream or not dream.hidden:
         return jsonify({'error': 'Dream not found'}), 404
 
     return jsonify({
@@ -209,7 +210,7 @@ def get_dream_by_id(dream_id):
 @app.route('/gallery/<dream_id>')
 def public_gallery_view(dream_id):
     dream = Dream.query.get(dream_id)
-    if not dream or not dream.is_shareable:
+    if not dream or not dream.hidden:
         return "Dream not found", 404
     return render_template("public_dream.html", dream=dream)
 
@@ -560,7 +561,7 @@ def generate_dream_image():
         generate_resized_image(image_path, tile_path, size=(256, 256))
 
         # Update DB
-        dream.image_url = image_url
+        # dream.image_url = image_url
         dream.image_file = filename
         db.session.commit()
         logger.info("Dream successfully updated with image.")
@@ -666,15 +667,16 @@ def generate_dream_image():
 
 
 
-
+from sqlalchemy import or_
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
     user_tz = ZoneInfo(current_user.timezone or "UTC") 
 
-    dreams = Dream.query.filter_by(user_id=current_user.id) \
-                        .order_by(Dream.created_at.desc()) \
-                        .all()
+    dreams = Dream.query.filter(
+        Dream.user_id == current_user.id,
+        or_(Dream.hidden == False, Dream.hidden.is_(None))
+    ).order_by(Dream.created_at.desc()).all()
     
     def convert_created_at(dt):
         try:
