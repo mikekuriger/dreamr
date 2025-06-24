@@ -8,11 +8,14 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from flask_mail import Message, Mail
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 from langdetect import detect
 from openai import OpenAI
 from PIL import Image
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from sqlalchemy import func
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
 import base64
@@ -24,6 +27,7 @@ import openai
 import os
 import re
 import requests
+import shutil
 import string
 import traceback
 import uuid
@@ -214,13 +218,14 @@ def public_gallery_view(dream_id):
         return "Dream not found", 404
     return render_template("public_dream.html", dream=dream)
 
-  
+
+# for google logins via web app
 @app.route('/login/google')
 def login_google():
     redirect_uri = url_for('auth_google', _external=True)
     return google.authorize_redirect(redirect_uri)
 
-
+# for google logins via web app
 @app.route('/auth/google')
 def auth_google():
     token = google.authorize_access_token()
@@ -228,7 +233,8 @@ def auth_google():
     user_info = resp.json()
 
     email = user_info['email']
-    name = user_info.get('name')
+    full_name = user_info.get("name", "")
+    name = full_name.split()[0] if full_name else ""
 
     # Check if user exists
     user = User.query.filter_by(email=email).first()
@@ -242,6 +248,34 @@ def auth_google():
     return redirect("/dashboard")
 
 
+# for google logins via mobile app
+@app.route('/api/google_login', methods=['POST'])
+def api_google_login():
+    data = request.get_json()
+    token = data.get('id_token')
+
+    try:
+        # ✅ Correct usage: instantiate request object
+        req = google_requests.Request()
+        idinfo = id_token.verify_oauth2_token(token, req)
+
+        email = idinfo['email']
+        name = idinfo.get('name')
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+            db.session.add(user)
+            db.session.commit()
+
+        login_user(user)
+        return jsonify({"success": True})
+
+    except ValueError:
+        return jsonify({"error": "Invalid token"}), 400
+
+
+
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.get_json()
@@ -252,20 +286,26 @@ def register():
     timezone_val = data.get("timezone")
     password = data.get("password")
 
+    logger.info(f"📨 Registration attempt: {email}")
+
     EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
     if not first_name or len(first_name.strip()) > 50:
+        logger.warning("❌ Invalid name")
         return jsonify({"error": "Name must be 1–50 characters"}), 400
 
     if not password or len(password) < 8:
+        logger.warning("❌ Invalid password")
         return jsonify({"error": "Password must be at least 8 characters"}), 400
 
     if not email or not EMAIL_REGEX.match(email):
+        logger.warning("❌ Invalid email")
         return jsonify({"error": "Invalid email address"}), 400
 
     # Check for duplicates in users and pendingusers (case-insensitive)
     if User.query.filter(func.lower(User.email) == email).first() or \
-       PendingUser.query.filter(func.lower(PendingUser.email) == email).first():
+        PendingUser.query.filter(func.lower(PendingUser.email) == email).first():
+        logger.warning("⚠️ Duplicate user or pending registration")
         return jsonify({"error": "User already exists or is pending confirmation"}), 400
 
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -282,12 +322,9 @@ def register():
 
     db.session.add(pending)
     db.session.commit()
-    
-    send_confirmation_email(email, token)
 
-    # TODO: Send email with confirmation link
-    # confirm_url = f"https://yourdomain.com/confirm/{token}"
-    # send_email(email, confirm_url)
+    logger.info(f"✅ Registered new pending user: {email}")
+    send_confirmation_email(email, token)
 
     return jsonify({
         "message": "Please check your email to confirm your Dreamr✨account"
@@ -357,7 +394,15 @@ def login():
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
         return jsonify({"error": "Invalid credentials"}), 401
     login_user(user, remember=True)
-    return jsonify({"message": "Logged in"})
+    # return jsonify({"message": "Logged in"})
+    return jsonify({
+        "message": "Logged in",
+        "user": {
+            "id": user.id,
+            "email": user.email
+        }
+    })
+
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -667,7 +712,38 @@ def generate_dream_image():
 
 
 
-from sqlalchemy import or_
+
+# all dreams need to be displayed in the manage page
+@app.route("/api/alldreams", methods=["GET"])
+@login_required
+def get_alldreams():
+    user_tz = ZoneInfo(current_user.timezone or "UTC") 
+
+    dreams = Dream.query.filter(Dream.user_id == current_user.id).order_by(Dream.created_at.desc()).all()
+    
+    def convert_created_at(dt):
+        try:
+            print(f"Original datetime: {dt} (tzinfo={dt.tzinfo})")
+            return dt.replace(tzinfo=timezone.utc).astimezone(user_tz).isoformat()
+        except Exception as e:
+            print(f"[ERROR] Timestamp conversion failed: {e}")
+            traceback.print_exc()
+            return None
+
+    return jsonify([
+        {
+            "id": d.id,
+            "summary": d.summary,
+            "text": d.text,
+            "analysis": d.analysis,
+            "hidden": d.hidden,
+            "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
+            "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
+            "created_at": convert_created_at(d.created_at) if d.created_at else None
+        } for d in dreams
+    ])
+
+  
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
@@ -693,13 +769,50 @@ def get_dreams():
             "summary": d.summary,
             "text": d.text,
             "analysis": d.analysis,
+            "tone": d.tone,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
-            # "image_thumb": f"/static/images/thumbs/{d.image_file}" if d.image_file else None,
             "created_at": convert_created_at(d.created_at) if d.created_at else None
         } for d in dreams
     ])
 
+# For deleting dreams, and moving the images
+@app.route("/api/dreams/<int:dream_id>", methods=["DELETE"])
+@login_required
+def delete_dream(dream_id):
+    dream = Dream.query.get_or_404(dream_id)
+    if dream.user_id != current_user.id:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    # Move image files to archive folder
+    if dream.image_file:
+        try:
+            image_path = os.path.join("static", "images", "dreams", dream.image_file)
+            tile_path = os.path.join("static", "images", "tiles", dream.image_file)
+            archive_dir = os.path.join("static", "images", "deleted")
+
+            os.makedirs(archive_dir, exist_ok=True)
+
+            for path in [image_path, tile_path]:
+                if os.path.exists(path):
+                    shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+
+        except Exception as e:
+            print(f"[WARN] Failed to archive image: {e}")
+
+    db.session.delete(dream)
+    db.session.commit()
+    return '', 204
+
+@app.route("/api/dreams/<int:dream_id>/toggle-hidden", methods=["POST"])
+@login_required
+def toggle_hidden_dream(dream_id):
+    dream = Dream.query.get_or_404(dream_id)
+    if dream.user_id != current_user.id:
+        return jsonify({"error": "Unauthorized"}), 403
+    dream.hidden = not dream.hidden
+    db.session.commit()
+    return jsonify({"hidden": dream.hidden})
 
 
 @app.route("/api/check_auth", methods=["GET"])
