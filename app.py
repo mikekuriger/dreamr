@@ -114,6 +114,7 @@ class Dream(db.Model):
     analysis = db.Column(db.Text)                  # AI's response
     summary = db.Column(db.Text)                   # AI's response summarized
     tone = db.Column(db.String(50))                # AI's tone evaluation
+    image_prompt = db.Column(db.Text)              # AI's image prompt
     hidden = db.Column(db.Boolean, default=False)  # Hides the entry (reversable)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -608,6 +609,7 @@ def generate_dream_image():
         # Update DB
         # dream.image_url = image_url
         dream.image_file = filename
+        dream.image_prompt = image_prompt
         db.session.commit()
         logger.info("Dream successfully updated with image.")
 
