@@ -92,6 +92,8 @@ class User(db.Model, UserMixin):
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
     language = db.Column(db.String(10), nullable=True, default='en')
     avatar_filename = db.Column(db.String(200), nullable=True)
+    mute_audio = db.Column(db.Boolean, default=False)
+
 
 
 class PendingUser(db.Model):
@@ -118,6 +120,7 @@ class Dream(db.Model):
     hidden = db.Column(db.Boolean, default=False)  # Hides the entry (reversable)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # is_draft = db.Column(db.Boolean, default=False)  # Saved dreams that have not been analyzed
 
 
 # class DreamTone(Enum):
@@ -163,7 +166,8 @@ def profile():
             'birthdate': user.birthdate.isoformat() if user.birthdate else '',
             'gender': user.gender,
             'timezone': user.timezone,
-            'avatar_url': f'/static/avatars/{user.avatar_filename}' if user.avatar_filename else ''
+            'avatar_url': f'/static/avatars/{user.avatar_filename}' if user.avatar_filename else '',
+            'mute_audio': user.mute_audio
         })
 
     # POST: update profile
@@ -190,6 +194,9 @@ def profile():
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file.save(filepath)
         user.avatar_filename = filename
+
+    if 'mute_audio' in data:
+      user.mute_audio = data['mute_audio'].lower() in ['true', '1', 'yes']
 
     db.session.commit()
     # return jsonify({'success': True})
@@ -466,12 +473,36 @@ def chat():
     logger.debug(f"Received JSON: {data}")
 
     message = data.get("message")
+    # dream_id = data.get("id")  # Optional - used if submitting from a draft
+  
     if not message:
         logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
 
     try:
         # Step 1: Save dream
+        # if dream_id:
+        #     logger.info(f"Updating existing draft with ID {dream_id}")
+        #     dream = Dream.query.filter_by(id=dream_id, user_id=current_user.id).first()
+        #     if not dream:
+        #         logger.warning(f"No draft found with ID {dream_id} for user {current_user.id}")
+        #         return jsonify({"error": "Draft not found."}), 404
+        #     dream.text = message
+        #     dream.is_draft = False
+        #     # dream.created_at = datetime.utcnow()  # Optional: refresh timestamp
+        # else:
+        #     logger.info("Saving new dream to database...")
+        #     dream = Dream(
+        #         user_id=current_user.id,
+        #         text=message,
+        #         created_at=datetime.utcnow(),
+        #         is_draft=False
+        #     )
+        #     db.session.add(dream)
+        
+        # db.session.commit()
+        # logger.debug(f"Dream record saved with ID: {dream.id}")
+
         logger.info("Saving dream to database...")
         dream = Dream(
             user_id=current_user.id,
@@ -542,6 +573,39 @@ def chat():
         db.session.rollback()
         logger.error("Exception occurred during dream processing:", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+
+# save dream for later analysis
+# @app.route("/api/draft", methods=["POST"])
+# @login_required
+# def draft():
+#     logger.info(" /api/draft called")
+#     data = request.get_json()
+#     logger.debug(f"Received JSON: {data}")
+
+#     message = data.get("message")
+#     if not message or not message.strip():
+#         return jsonify({"error": "Empty draft message."}), 400
+#         logger.debug("[WARN] Empty draft message.")
+
+#     try:
+#         # Step 1: Save dream
+#         logger.info("Saving draft to database...")
+#         dream = Dream(
+#             user_id=current_user.id,
+#             text=message,
+#             created_at=datetime.utcnow(),
+#             is_draft=True
+#         )
+#         db.session.add(dream)
+#         db.session.commit()
+#         logger.debug(f"Dream saved in with ID: {dream.id}")
+#         return jsonify({"status": "ok", "dream_id": dream.id}), 200
+
+#     except Exception as e:
+#         db.session.rollback()
+#         logger.error("Exception occurred saving draft:", exc_info=True)
+#         return jsonify({"error": str(e)}), 500
 
 
 # used to generate smaller images for journal and tiles
@@ -754,6 +818,7 @@ def get_dreams():
     dreams = Dream.query.filter(
         Dream.user_id == current_user.id,
         or_(Dream.hidden == False, Dream.hidden.is_(None))
+        # or_(Dream.is_draft == False, Dream.is_draft.is_(None))
     ).order_by(Dream.created_at.desc()).all()
     
     def convert_created_at(dt):
