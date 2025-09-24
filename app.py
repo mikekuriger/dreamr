@@ -3,7 +3,7 @@ from authlib.integrations.flask_client import OAuth # for google auth
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from flask_cors import CORS
-from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint
+from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint, render_template, render_template_string
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_mail import Message, Mail
 from flask_migrate import Migrate
@@ -20,6 +20,7 @@ from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
 import base64
 import bcrypt
+import hashlib, secrets
 import io
 import json
 import logging
@@ -29,6 +30,7 @@ import re
 import requests
 import shutil
 import string
+import time
 import traceback
 import uuid
 
@@ -84,7 +86,8 @@ class User(db.Model, UserMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(128), nullable=False)
+    # password = db.Column(db.String(128), nullable=False)
+    password = db.Column(db.String(128), nullable=True, default='')
     first_name = db.Column(db.String(50), nullable=True)
     birthdate = db.Column(db.Date, nullable=True)
     gender = db.Column(db.String(20), nullable=True)  # e.g., "male", "female", prefer not to say"
@@ -92,7 +95,7 @@ class User(db.Model, UserMixin):
     timezone = db.Column(db.String(50), nullable=True)  # e.g., "America/Los_Angeles"
     language = db.Column(db.String(10), nullable=True, default='en')
     avatar_filename = db.Column(db.String(200), nullable=True)
-    mute_audio = db.Column(db.Boolean, default=False)
+    enable_audio = db.Column(db.Boolean, default=False)
 
 
 
@@ -122,6 +125,30 @@ class Dream(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # is_draft = db.Column(db.Boolean, default=False)  # Saved dreams that have not been analyzed
 
+
+class PasswordResetToken(db.Model):
+    __tablename__ = 'password_reset_tokens'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)  # sha256 hex
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    request_ip = db.Column(db.String(64))
+    user_agent = db.Column(db.String(256))
+    user = db.relationship('User')
+
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+RESET_TTL_MINUTES = 60  # tweak as you like
+
+def _generate_raw_token() -> str:
+    return secrets.token_urlsafe(32)
+
+def _password_policy_ok(pw: str) -> bool:
+    return isinstance(pw, str) and len(pw) >= 8  # expand if needed
+  
 
 # class DreamTone(Enum):
 #     PEACEFUL = "Peaceful / gentle"
@@ -167,7 +194,7 @@ def profile():
             'gender': user.gender,
             'timezone': user.timezone,
             'avatar_url': f'/static/avatars/{user.avatar_filename}' if user.avatar_filename else '',
-            'mute_audio': user.mute_audio
+            'enable_audio': user.enable_audio
         })
 
     # POST: update profile
@@ -195,8 +222,8 @@ def profile():
         file.save(filepath)
         user.avatar_filename = filename
 
-    if 'mute_audio' in data:
-      user.mute_audio = data['mute_audio'].lower() in ['true', '1', 'yes']
+    if 'enable_audio' in data:
+      user.enable_audio = data['enable_audio'].lower() in ['true', '1', 'yes']
 
     db.session.commit()
     # return jsonify({'success': True})
@@ -205,26 +232,32 @@ def profile():
   })
 
 
-@app.route('/api/gallery/<dream_id>')
-def get_dream_by_id(dream_id):
-    dream = Dream.query.get(dream_id)
-    if not dream or not dream.hidden:
-        return jsonify({'error': 'Dream not found'}), 404
 
-    return jsonify({
-        'id': dream.id,
-        'summary': dream.summary,
-        'image_file': dream.image_file,
-        'created_at': dream.created_at.isoformat()
-    })
+# begin - these seem to be unused
+# @app.route('/api/gallery/<dream_id>')
+# def get_dream_by_id(dream_id):
+#     dream = Dream.query.get(dream_id)
+#     # if not dream or not dream.hidden:
+#     if not dream or dream.hidden:
+#         return jsonify({'error': 'Dream not found'}), 404
+
+#     return jsonify({
+#         'id': dream.id,
+#         'summary': dream.summary,
+#         'image_file': dream.image_file,
+#         'created_at': dream.created_at.isoformat()
+#     })
 
 
-@app.route('/gallery/<dream_id>')
-def public_gallery_view(dream_id):
-    dream = Dream.query.get(dream_id)
-    if not dream or not dream.hidden:
-        return "Dream not found", 404
-    return render_template("public_dream.html", dream=dream)
+# @app.route('/gallery/<dream_id>')
+# def public_gallery_view(dream_id):
+#     dream = Dream.query.get(dream_id)
+#     # if not dream or not dream.hidden:
+#     if not dream or dream.hidden:
+#         return "Dream not found", 404
+#     return render_template("public_dream.html", dream=dream)
+# end - these seem to be unused
+
 
 
 # for google logins via web app
@@ -265,7 +298,8 @@ def api_google_login():
     try:
         # ✅ Correct usage: instantiate request object
         req = google_requests.Request()
-        idinfo = id_token.verify_oauth2_token(token, req)
+        # idinfo = id_token.verify_oauth2_token(token, req)
+        idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
 
         email = idinfo['email']
         name = idinfo.get('name')
@@ -283,7 +317,7 @@ def api_google_login():
         return jsonify({"error": "Invalid token"}), 400
 
 
-
+# New user registration
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.get_json()
@@ -337,6 +371,219 @@ def register():
     return jsonify({
         "message": "Please check your email to confirm your Dreamr✨account"
     })
+
+
+# Request Password Reset (no user enumeration)
+@app.route("/api/request_password_reset", methods=["POST"])
+def api_request_password_reset():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    # Always say 200
+    user = User.query.filter(func.lower(User.email) == email).first()
+    if user:
+        # invalidate outstanding tokens
+        PasswordResetToken.query.filter_by(user_id=user.id, used_at=None)\
+            .update({PasswordResetToken.used_at: datetime.utcnow()})
+        db.session.flush()
+
+        raw = _generate_raw_token()
+        prt = PasswordResetToken(
+            user_id=user.id,
+            token_hash=_hash_token(raw),
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(minutes=RESET_TTL_MINUTES),
+            request_ip=request.remote_addr,
+            user_agent=request.headers.get("User-Agent", "")[:250],
+        )
+        db.session.add(prt)
+        db.session.commit()
+
+        try:
+            base = app.config.get("RESET_LINK_BASE", "https://dreamr.zentha.me/reset")
+            link = f"{base}?token={raw}"
+            msg = Message(
+                subject="Reset your Dreamr password",
+                recipients=[user.email],
+                body=(
+                    "We received a request to reset your password.\n\n"
+                    f"Open this link to set a new password (expires in {RESET_TTL_MINUTES} minutes):\n{link}\n\n"
+                    "If you didn’t request this, ignore this email."
+                ),
+            )
+            mail.send(msg)
+        except Exception:
+            logger.exception("Failed to send reset email") 
+
+    return jsonify({"message": "If that email exists, a reset link was sent."}), 200
+
+
+
+
+# Password reset with token (when user clicks the email)
+
+# ---------------------------------------------------------------------------
+# Minimal web reset page (temporary until mobile deep-link is live)
+# ---------------------------------------------------------------------------
+RESET_PAGE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reset your Dreamr password</title>
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#0b0420; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+    .card { width: min(480px, 92vw); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { color:#D1B2FF; margin: 0 0 16px; }
+    input[type=password] { width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.3); color:#fff; margin-bottom:12px; }
+    button { width:100%; padding:12px; border-radius:10px; border:0; background:#fff; color:#000; font-weight:600; cursor:pointer; }
+    .msg{ margin-top:12px; padding:10px; border-radius:10px; }
+    .err{ background:rgba(255,0,0,0.16); border:1px solid rgba(255,0,0,0.35);}
+    .ok{ background:rgba(0,200,0,0.16); border:1px solid rgba(0,200,0,0.35);}
+    .hint{ font-size:12px; color:#bfb8d8; margin-top:8px; text-align:center;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if invalid %}
+      <h1>Link expired or invalid</h1>
+      <p>Please request a new reset link from the Dreamr app.</p>
+      <div class="hint">You can close this window.</div>
+    {% elif done %}
+      <h1>Password updated</h1>
+      <p>You can now open the Dreamr app and sign in with your new password.</p>
+      <div class="hint">You can close this window.</div>
+    {% else %}
+      <h1>Set a new password</h1>
+      <p>Enter a new password for your account.</p>
+      {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+      <form method="post">
+        <input type="hidden" name="token" value="{{ token }}">
+        <input type="password" name="pw1" placeholder="New password (min 8 chars)" minlength="8" required>
+        <input type="password" name="pw2" placeholder="Confirm new password" minlength="8" required>
+        <button type="submit">Update Password</button>
+      </form>
+      <div class="hint">After updating, open the Dreamr app and log in.</div>
+    {% endif %}
+  </div>
+</body>
+</html>
+"""
+
+@app.route("/reset", methods=["GET", "POST"])
+def reset_page():
+    """
+    Temporary web UI for password reset.
+    GET: show form if token valid, else show 'expired/invalid'.
+    POST: set new password and show 'success—open the app'.
+    """
+    if request.method == "GET":
+        raw = request.args.get("token", "", type=str)
+        if not raw:
+            return render_template_string(RESET_PAGE_TEMPLATE, invalid=True), 400
+        h = _hash_token(raw)
+        prt = PasswordResetToken.query.filter_by(token_hash=h).first()
+        if not prt or prt.used_at is not None or prt.expires_at < datetime.utcnow():
+            return render_template_string(RESET_PAGE_TEMPLATE, invalid=True), 400
+        return render_template_string(RESET_PAGE_TEMPLATE, token=raw, invalid=False, done=False)
+
+    # POST
+    raw = request.form.get("token", "")
+    pw1 = request.form.get("pw1", "")
+    pw2 = request.form.get("pw2", "")
+    if not raw or not pw1 or not pw2:
+        return render_template_string(RESET_PAGE_TEMPLATE, invalid=True), 400
+    if pw1 != pw2:
+        return render_template_string(RESET_PAGE_TEMPLATE, token=raw, error="Passwords do not match"), 400
+    if len(pw1) < 8:
+        return render_template_string(RESET_PAGE_TEMPLATE, token=raw, error="Use at least 8 characters"), 400
+
+    h = _hash_token(raw)
+    prt = PasswordResetToken.query.filter_by(token_hash=h).first()
+    if not prt or prt.used_at is not None or prt.expires_at < datetime.utcnow():
+        return render_template_string(RESET_PAGE_TEMPLATE, invalid=True), 400
+
+    user = prt.user
+    user.password = bcrypt.hashpw(pw1.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    prt.used_at = datetime.utcnow()
+    db.session.commit()
+
+    # (Optional) invalidate other sessions here.
+
+    return render_template_string(RESET_PAGE_TEMPLATE, done=True)
+
+
+
+# Password Reset with token
+@app.route("/api/reset_password", methods=["POST"])
+def api_reset_password():
+    data = request.get_json(silent=True) or {}
+    raw = data.get("token") or ""
+    new_pw = data.get("new_password") or ""
+    if not raw or not new_pw:
+        return jsonify({"error": "token and new_password required"}), 400
+    if not _password_policy_ok(new_pw):
+        return jsonify({"error": "Password does not meet policy"}), 400
+
+    h = _hash_token(raw)
+    prt = PasswordResetToken.query.filter_by(token_hash=h).first()
+    if not prt or prt.used_at is not None or prt.expires_at < datetime.utcnow():
+        return jsonify({"error": "Invalid or expired token"}), 400
+
+    user = prt.user
+    # set bcrypt hash
+    user.password = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    prt.used_at = datetime.utcnow()
+
+    # optional: invalidate other sessions here
+
+    db.session.commit()
+    return jsonify({"message": "Password updated"}), 200
+
+
+# Change Password (logged in)
+@app.route("/api/change_password", methods=["POST"])
+@login_required
+def api_change_password():
+    data = request.get_json(silent=True) or {}
+    current_pw = data.get("current_password") or ""
+    new_pw = data.get("new_password") or ""
+    if not new_pw:
+        return jsonify({"error": "new_password required"}), 400
+    if not _password_policy_ok(new_pw):
+        return jsonify({"error": "Password does not meet policy"}), 400
+
+    user = current_user  # User
+
+    # If the account was created via Google and has no local password yet
+    if not user.password or user.password == "":
+        # allow setting initial local password without current_pw
+        user.password = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        db.session.commit()
+        return jsonify({"message": "Password set"}), 200
+
+    # Normal flow: verify current
+    ok = False
+    try:
+        ok = bcrypt.checkpw(current_pw.encode('utf-8'), user.password.encode('utf-8'))
+    except Exception:
+        ok = False
+    if not ok:
+        return jsonify({"error": "Current password incorrect"}), 401
+
+    # Disallow reusing same password
+    if bcrypt.checkpw(new_pw.encode('utf-8'), user.password.encode('utf-8')):
+        return jsonify({"error": "New password must be different"}), 400
+
+    user.password = bcrypt.hashpw(new_pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # optional: invalidate other sessions here
+
+    db.session.commit()
+    return jsonify({"message": "Password changed"}), 200
 
 
 def send_confirmation_email(recipient_email, token):
@@ -684,99 +931,32 @@ def generate_dream_image():
         })
 
     except openai.OpenAIError as e:
-        logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+        db.session.rollback()
+        logger.error("...", exc_info=True)
         return jsonify({"error": "OpenAI image generation failed"}), 502
-
     except requests.RequestException as e:
-        logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+        db.session.rollback()
+        logger.error("...", exc_info=True)
         return jsonify({"error": "Failed to fetch image"}), 504
-
-    except Exception as img_error:
+    except Exception:
+        db.session.rollback()
         logger.exception("Unexpected error during image generation")
         return jsonify({"error": "Image generation failed"}), 500
 
-    finally:
-        db.session.rollback()  # Only triggers on unhandled exception
+    # except openai.OpenAIError as e:
+    #     logger.error(f"[ERROR] OpenAI image generation failed: {e}")
+    #     return jsonify({"error": "OpenAI image generation failed"}), 502
 
+    # except requests.RequestException as e:
+    #     logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
+    #     return jsonify({"error": "Failed to fetch image"}), 504
 
-      
-# @app.route("/api/image_generate", methods=["POST"])
-# @login_required
-# def generate_dream_image():
-#     logger.info(" /api/image_generate called")
-#     data = request.get_json()
-#     dream_id = data.get("dream_id")
+    # except Exception as img_error:
+    #     logger.exception("Unexpected error during image generation")
+    #     return jsonify({"error": "Image generation failed"}), 500
 
-#     if not dream_id:
-#         logger.debug("[WARN] Missing dream ID.")
-#         return jsonify({"error": "Missing dream ID."}), 400
-
-#     dream = Dream.query.get(dream_id)
-
-#     if not dream or dream.user_id != current_user.id:
-#         return jsonify({"error": "Dream not found or unauthorized"}), 404
-
-#     message = dream.text
-#     tone = dream.tone
-
-#     try:
-#         logger.info("Converting dream to image prompt...")
-#         image_prompt = convert_dream_to_image_prompt(message, tone)
-#         logger.debug(f"Image prompt: {image_prompt}")
-#         logger.info("Sending image generation request...")
-
-#         image_response = client.images.generate(
-#             model="dall-e-3",
-#             prompt=image_prompt,
-#             n=1,
-#             size="1024x1024",
-#             response_format="url"
-#         )
-#         image_url = image_response.data[0].url
-#         logger.debug(f"Image URL received: {image_url}")
-
-#         filename = f"{uuid.uuid4().hex}.png"
-#         image_path = os.path.join("static", "images", "dreams", filename)
-#         tile_path = os.path.join("static", "images", "tiles", filename)
-#         # thumb_path = os.path.join("static", "images", "thumbs", filename)
-      
-#         os.makedirs(os.path.dirname(image_path), exist_ok=True)
-
-#         # Save the image to a file
-#         img_data = requests.get(image_url).content
-#         with open(image_path, "wb") as f:
-#             f.write(img_data)
-#         logger.info(f"Image saved to {image_path}")
-
-#         # Generate resized images
-#         generate_resized_image(image_path, tile_path, size=(256, 256))
-#         # generate_resized_image(image_path, thumb_path, size=(48, 48))
-      
-#         # Save to database
-#         dream.image_url = image_url
-#         dream.image_file = filename
-#         db.session.commit()
-#         logger.info("Dream successfully updated with image.")
-
-#         return jsonify({
-#             "analysis": dream.analysis,
-#             "image": f"/static/images/dreams/{dream.image_file}"
-#         })
-
-#     except openai.OpenAIError as e:
-#         logger.error(f"[ERROR] OpenAI image generation failed: {e}")
-
-#     except requests.RequestException as e:
-#         logger.error(f"[ERROR] Failed to fetch image from URL: {e}")
-
-#     except Exception as img_error:
-#         logger.warning("Image generation failed", exc_info=True)
-
-#     # If we hit an exception but didn't return above:
-#     db.session.rollback()
-#     return jsonify({"error": "Image generation failed"}), 500
-
-
+    # finally:
+    #     db.session.rollback()  # Only triggers on unhandled exception
 
 
 # all dreams need to be displayed in the manage page
@@ -803,6 +983,7 @@ def get_alldreams():
             "text": d.text,
             "analysis": d.analysis,
             "hidden": d.hidden,
+            "tone": d.tone,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
             "created_at": convert_created_at(d.created_at) if d.created_at else None
@@ -887,7 +1068,8 @@ def check_auth():
     if current_user.is_authenticated:
         return jsonify({
             "authenticated": True,
-            "first_name": current_user.first_name
+            "first_name": current_user.first_name,
+            "enable_audio": current_user.enable_audio
         })
     return jsonify({"authenticated": False}), 401
 
