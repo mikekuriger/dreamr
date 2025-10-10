@@ -62,6 +62,104 @@ migrate = Migrate(app, db)
 mail = Mail(app)
 
 
+# Password reset with token (when user clicks the email)
+# ---------------------------------------------------------------------------
+# Minimal web reset page (temporary until mobile deep-link is live)
+# ---------------------------------------------------------------------------
+RESET_PAGE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Reset your Dreamr password</title>
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#0b0420; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+    .card { width: min(480px, 92vw); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { color:#D1B2FF; margin: 0 0 16px; }
+    input[type=password] { width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.3); color:#fff; margin-bottom:12px; }
+    button { width:100%; padding:12px; border-radius:10px; border:0; background:#fff; color:#000; font-weight:600; cursor:pointer; }
+    .msg{ margin-top:12px; padding:10px; border-radius:10px; }
+    .err{ background:rgba(255,0,0,0.16); border:1px solid rgba(255,0,0,0.35);}
+    .ok{ background:rgba(0,200,0,0.16); border:1px solid rgba(0,200,0,0.35);}
+    .hint{ font-size:12px; color:#bfb8d8; margin-top:8px; text-align:center;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if invalid %}
+      <h1>Link expired or invalid</h1>
+      <p>Please request a new reset link from the Dreamr app.</p>
+      <div class="hint">You can close this window.</div>
+    {% elif done %}
+      <h1>Password updated</h1>
+      <p>You can now open the Dreamr app and sign in with your new password.</p>
+      <div class="hint">You can close this window.</div>
+    {% else %}
+      <h1>Set a new password</h1>
+      <p>Enter a new password for your account.</p>
+      {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
+      <form method="post">
+        <input type="hidden" name="token" value="{{ token }}">
+        <input type="password" name="pw1" placeholder="New password (min 8 chars)" minlength="8" required>
+        <input type="password" name="pw2" placeholder="Confirm new password" minlength="8" required>
+        <button type="submit">Update Password</button>
+      </form>
+      <div class="hint">After updating, open the Dreamr app and log in.</div>
+    {% endif %}
+  </div>
+</body>
+</html>
+"""
+
+# Confirm email with token
+# ---------------------------------------------------------------------------
+# Minimal web reset page (temporary until mobile deep-link is live)
+# ---------------------------------------------------------------------------
+CONFIRM_PAGE_TEMPLATE = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dreamr account confirmation</title>
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#0b0420; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+    .card { width: min(520px, 92vw); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    p { color:#D1B2FF; margin: 0 0 16px; }
+    .hint{ font-size:12px; color:#bfb8d8; margin-top:8px; text-align:center;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if status == "ok" %}
+      <h1>Account confirmed</h1>
+      <p>You're all set! Open the Dreamr app and sign in.</p>
+      <div class="hint">You can close this window.</div>
+    {% elif status == "exists" %}
+      <h1>Already confirmed</h1>
+      <p>Your account was already active. Open the Dreamr app and sign in.</p>
+      <div class="hint">You can close this window.</div>
+    {% elif status == "expired" %}
+      <h1>Link expired</h1>
+      <p>Please request a new confirmation email from the Dreamr app.</p>
+      <div class="hint">You can close this window.</div>
+    {% else %}
+      <h1>Invalid link</h1>
+      <p>This confirmation link is not valid.</p>
+      <div class="hint">You can close this window.</div>
+    {% endif %}
+  </div>
+</body>
+</html>
+"""
+
+
+
 # google auth
 oauth = OAuth(app)
 
@@ -149,7 +247,6 @@ def _generate_raw_token() -> str:
 def _password_policy_ok(pw: str) -> bool:
     return isinstance(pw, str) and len(pw) >= 8  # expand if needed
   
-
 # class DreamTone(Enum):
 #     PEACEFUL = "Peaceful / gentle"
 #     EPIC = "Epic / heroic"
@@ -165,6 +262,33 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
+# Sends confirmation email (new)
+def send_confirmation_email(recipient_email, token):
+    base = app.config.get("CONFIRM_LINK_BASE", "https://dreamr-us-west-01.zentha.me/confirm")
+    confirm_url = f"{base}?token={token}"
+    msg = Message(
+        subject="Confirm your Dreamr✨account",
+        recipients=[recipient_email],
+        body=(
+            "Welcome to Dreamr!\n\n"
+            "Click the link below to confirm your account:\n\n"
+            f"{confirm_url}\n\n"
+            "After confirming, open the Dreamr app and sign in.\n"
+            "If you didn't sign up for Dreamr, ignore this message."
+        )
+    )
+    mail.send(msg)
+
+
+# Profile pic stuff
+UPLOAD_FOLDER = '/data/dreamr-frontend/static/avatars'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# ROUTES
 # for fetching all file names (not images) to display on landing page
 @app.route("/api/images", methods=["GET"])
 def get_images():
@@ -173,14 +297,7 @@ def get_images():
     return jsonify([f for f in files if f.endswith(".png")])
 
 
-# Profile 
-UPLOAD_FOLDER = '/data/dreamr-frontend/static/avatars'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# @profile_bp.route('/api/profile', methods=['GET', 'POST'])
+# profile update page
 @app.route('/api/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
@@ -232,7 +349,6 @@ def profile():
   })
 
 
-
 # begin - these seem to be unused
 # @app.route('/api/gallery/<dream_id>')
 # def get_dream_by_id(dream_id):
@@ -257,7 +373,6 @@ def profile():
 #         return "Dream not found", 404
 #     return render_template("public_dream.html", dream=dream)
 # end - these seem to be unused
-
 
 
 # for google logins via web app
@@ -418,60 +533,46 @@ def api_request_password_reset():
     return jsonify({"message": "If that email exists, a reset link was sent."}), 200
 
 
+# Confirmation (new)
+@app.route("/confirm", methods=["GET"])
+def confirm_page():
+    """Finalize account via token and show a simple message."""
+    token = request.args.get("token", "", type=str)
+    if not token:
+        return render_template_string(CONFIRM_PAGE_TEMPLATE, status="invalid"), 400
 
+    pending = PendingUser.query.filter_by(uuid=token).first()
+    if not pending:
+        return render_template_string(CONFIRM_PAGE_TEMPLATE, status="invalid"), 400
 
-# Password reset with token (when user clicks the email)
+    # Expired?
+    if pending.expires_at and pending.expires_at < datetime.utcnow():
+        db.session.delete(pending)
+        db.session.commit()
+        return render_template_string(CONFIRM_PAGE_TEMPLATE, status="expired"), 410
 
-# ---------------------------------------------------------------------------
-# Minimal web reset page (temporary until mobile deep-link is live)
-# ---------------------------------------------------------------------------
-RESET_PAGE_TEMPLATE = """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Reset your Dreamr password</title>
-  <meta name="robots" content="noindex,nofollow">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { background:#0b0420; color:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
-    .card { width: min(480px, 92vw); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px; padding: 22px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
-    h1 { font-size: 20px; margin: 0 0 8px; }
-    p { color:#D1B2FF; margin: 0 0 16px; }
-    input[type=password] { width:100%; padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.3); color:#fff; margin-bottom:12px; }
-    button { width:100%; padding:12px; border-radius:10px; border:0; background:#fff; color:#000; font-weight:600; cursor:pointer; }
-    .msg{ margin-top:12px; padding:10px; border-radius:10px; }
-    .err{ background:rgba(255,0,0,0.16); border:1px solid rgba(255,0,0,0.35);}
-    .ok{ background:rgba(0,200,0,0.16); border:1px solid rgba(0,200,0,0.35);}
-    .hint{ font-size:12px; color:#bfb8d8; margin-top:8px; text-align:center;}
-  </style>
-</head>
-<body>
-  <div class="card">
-    {% if invalid %}
-      <h1>Link expired or invalid</h1>
-      <p>Please request a new reset link from the Dreamr app.</p>
-      <div class="hint">You can close this window.</div>
-    {% elif done %}
-      <h1>Password updated</h1>
-      <p>You can now open the Dreamr app and sign in with your new password.</p>
-      <div class="hint">You can close this window.</div>
-    {% else %}
-      <h1>Set a new password</h1>
-      <p>Enter a new password for your account.</p>
-      {% if error %}<div class="msg err">{{ error }}</div>{% endif %}
-      <form method="post">
-        <input type="hidden" name="token" value="{{ token }}">
-        <input type="password" name="pw1" placeholder="New password (min 8 chars)" minlength="8" required>
-        <input type="password" name="pw2" placeholder="Confirm new password" minlength="8" required>
-        <button type="submit">Update Password</button>
-      </form>
-      <div class="hint">After updating, open the Dreamr app and log in.</div>
-    {% endif %}
-  </div>
-</body>
-</html>
-"""
+    # Already confirmed?
+    existing = User.query.filter_by(email=pending.email).first()
+    if existing:
+        db.session.delete(pending)
+        db.session.commit()
+        return render_template_string(CONFIRM_PAGE_TEMPLATE, status="exists"), 200
+
+    # Create the real user; NOTE: pending.password is already bcrypt-hashed in your /api/register
+    new_user = User(
+        email=pending.email,
+        password=pending.password,
+        first_name=pending.first_name,
+        timezone=pending.timezone,
+        signup_date=datetime.utcnow()
+    )
+    db.session.add(new_user)
+    db.session.delete(pending)
+    db.session.commit()
+
+    # Do NOT login the browser session; we want app-only auth.
+    return render_template_string(CONFIRM_PAGE_TEMPLATE, status="ok"), 200
+
 
 @app.route("/reset", methods=["GET", "POST"])
 def reset_page():
@@ -514,7 +615,6 @@ def reset_page():
     # (Optional) invalidate other sessions here.
 
     return render_template_string(RESET_PAGE_TEMPLATE, done=True)
-
 
 
 # Password Reset with token
@@ -586,21 +686,8 @@ def api_change_password():
     return jsonify({"message": "Password changed"}), 200
 
 
-def send_confirmation_email(recipient_email, token):
-    confirm_url = f"https://dreamr.zentha.me/confirm/{token}"
-    msg = Message(
-        subject="Confirm your Dreamr✨account",
-        recipients=[recipient_email],
-        body=(
-            f"Welcome to Dreamr!\n\n"
-            f"Click the link below to confirm your account:\n\n"
-            f"{confirm_url}\n\n"
-            f"If you didn't sign up for Dreamr, ignore this message."
-        )
-    )
-    mail.send(msg)
 
-
+# Confirmation (for old web-app)
 @app.route("/api/confirm/<token>", methods=["GET"])
 def confirm_account(token):
     pending = PendingUser.query.filter_by(uuid=token).first()
