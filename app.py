@@ -16,6 +16,7 @@ from PIL import Image
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from sqlalchemy import func
 from sqlalchemy import or_
+from sqlalchemy.dialects.mysql import JSON as MySQLJSON
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
 import base64
@@ -177,7 +178,6 @@ google = oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
 )
 
-
 # Models
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
@@ -195,8 +195,6 @@ class User(db.Model, UserMixin):
     avatar_filename = db.Column(db.String(200), nullable=True)
     enable_audio = db.Column(db.Boolean, default=False)
 
-
-
 class PendingUser(db.Model):
     __tablename__ = 'pendingusers'
 
@@ -209,8 +207,9 @@ class PendingUser(db.Model):
     language = db.Column(db.String(10), nullable=True, default='en')
     expires_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + timedelta(hours=24))
 
-
 class Dream(db.Model):
+    __tablename__ = "dream"
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     text = db.Column(db.Text)                      # user's dream text
@@ -220,9 +219,40 @@ class Dream(db.Model):
     image_prompt = db.Column(db.Text)              # AI's image prompt
     hidden = db.Column(db.Boolean, default=False)  # Hides the entry (reversable)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
+    
+  # NEW: user’s private notes (not sent to AI)
+    notes = db.Column(db.Text, nullable=True)
+    notes_updated_at = db.Column(db.DateTime, nullable=True)
+  
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    # is_draft = db.Column(db.Boolean, default=False)  # Saved dreams that have not been analyzed
 
+    def set_notes(self, notes_text: str | None):
+        self.notes = (notes_text or "").strip() or None
+        self.notes_updated_at = datetime.utcnow()
+
+    def __repr__(self):
+        return f"<Dream id={self.id} user_id={self.user_id} hidden={self.hidden}>"
+
+class LifeEvent(db.Model):
+    __tablename__ = "life_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    title = db.Column(db.String(120), nullable=False)     # e.g., "Car accident"
+    details = db.Column(db.Text, nullable=True)           # optional narrative
+    occurred_at = db.Column(db.DateTime, nullable=False)  # when it happened
+    tags = db.Column(MySQLJSON, nullable=True)            # e.g., ["accident","injury"]
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # helpful indexes: (user_id, occurred_at) for quick recent-pull
+    __table_args__ = (
+        db.Index("ix_life_event_user_occurred", "user_id", "occurred_at"),
+    )
+
+    def __repr__(self):
+        return f"<LifeEvent id={self.id} user_id={self.user_id} title={self.title!r}>"
 
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
@@ -260,6 +290,28 @@ def _password_policy_ok(pw: str) -> bool:
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+# Add Life events for added context
+def add_life_event(user_id: int, title: str, occurred_at: datetime, details: str | None = None, tags: list[str] | None = None):
+    ev = LifeEvent(
+        user_id=user_id,
+        title=title.strip(),
+        occurred_at=occurred_at,
+        details=(details or None),
+        tags=(tags or None),
+    )
+    db.session.add(ev)
+    db.session.commit()
+    return ev
+
+# add personal notes to a dream
+def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
+    d = Dream.query.filter_by(id=dream_id, user_id=user_id).first()
+    if not d:
+        return None
+    d.set_notes(notes)
+    db.session.commit()
+    return d
 
 
 # Sends confirmation email (new)
