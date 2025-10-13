@@ -14,6 +14,7 @@ from langdetect import detect
 from openai import OpenAI
 from PIL import Image
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
+from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
@@ -219,12 +220,11 @@ class Dream(db.Model):
     image_prompt = db.Column(db.Text)              # AI's image prompt
     hidden = db.Column(db.Boolean, default=False)  # Hides the entry (reversable)
     image_file = db.Column(db.String(255))         # saved filename (e.g., 'dream_123.png')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-  # NEW: user’s private notes (not sent to AI)
     notes = db.Column(db.Text, nullable=True)
     notes_updated_at = db.Column(db.DateTime, nullable=True)
-  
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_question = db.Column(db.Boolean, nullable=False, server_default=db.text("0"))
 
     def set_notes(self, notes_text: str | None):
         self.notes = (notes_text or "").strip() or None
@@ -291,27 +291,6 @@ def _password_policy_ok(pw: str) -> bool:
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Add Life events for added context
-def add_life_event(user_id: int, title: str, occurred_at: datetime, details: str | None = None, tags: list[str] | None = None):
-    ev = LifeEvent(
-        user_id=user_id,
-        title=title.strip(),
-        occurred_at=occurred_at,
-        details=(details or None),
-        tags=(tags or None),
-    )
-    db.session.add(ev)
-    db.session.commit()
-    return ev
-
-# add personal notes to a dream
-def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
-    d = Dream.query.filter_by(id=dream_id, user_id=user_id).first()
-    if not d:
-        return None
-    d.set_notes(notes)
-    db.session.commit()
-    return d
 
 
 # Sends confirmation email (new)
@@ -399,32 +378,6 @@ def profile():
     return jsonify({
       'first_name': user.first_name
   })
-
-
-# begin - these seem to be unused
-# @app.route('/api/gallery/<dream_id>')
-# def get_dream_by_id(dream_id):
-#     dream = Dream.query.get(dream_id)
-#     # if not dream or not dream.hidden:
-#     if not dream or dream.hidden:
-#         return jsonify({'error': 'Dream not found'}), 404
-
-#     return jsonify({
-#         'id': dream.id,
-#         'summary': dream.summary,
-#         'image_file': dream.image_file,
-#         'created_at': dream.created_at.isoformat()
-#     })
-
-
-# @app.route('/gallery/<dream_id>')
-# def public_gallery_view(dream_id):
-#     dream = Dream.query.get(dream_id)
-#     # if not dream or not dream.hidden:
-#     if not dream or dream.hidden:
-#         return "Dream not found", 404
-#     return render_template("public_dream.html", dream=dream)
-# end - these seem to be unused
 
 
 # for google logins via web app
@@ -738,7 +691,6 @@ def api_change_password():
     return jsonify({"message": "Password changed"}), 200
 
 
-
 # Confirmation (for old web-app)
 @app.route("/api/confirm/<token>", methods=["GET"])
 def confirm_account(token):
@@ -798,7 +750,6 @@ def login():
     })
 
 
-
 @app.route("/api/logout", methods=["POST"])
 @login_required
 def logout():
@@ -850,6 +801,97 @@ def convert_dream_to_image_prompt(message, tone=None):
     return response.choices[0].message.content.strip()
 
 
+# Add Life events for added context
+def add_life_event(user_id: int, title: str, occurred_at: datetime, details: str | None = None, tags: list[str] | None = None):
+    ev = LifeEvent(
+        user_id=user_id,
+        title=title.strip(),
+        occurred_at=occurred_at,
+        details=(details or None),
+        tags=(tags or None),
+    )
+    db.session.add(ev)
+    db.session.commit()
+    return ev
+
+# add personal notes to a dream
+def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
+    d = Dream.query.filter_by(id=dream_id, user_id=user_id).first()
+    if not d:
+        return None
+    d.set_notes(notes)
+    db.session.commit()
+    return d
+
+
+# --- NEW: helpers ------------------------------------------------------------
+_TYPE_LINE = r"^\s*\**\s*Type\s*:\s*(Dream|Question)\s*\**\s*$"
+_FLAGS = re.I | re.M
+
+def _parse_is_question(ai_text: str) -> bool:
+    m = _TYPE_RE.search(ai_text or "")
+    return bool(m and m.group(1).lower() == "question")
+
+def _parse_iso_dt(value: str) -> datetime:
+    # Accept "YYYY-MM-DD" or full ISO; raise on bad input
+    v = value.strip()
+    try:
+        if len(v) == 10:  # YYYY-MM-DD
+            return datetime.strptime(v, "%Y-%m-%d")
+        # naive ISO fallback (e.g., 2025-10-12T14:30:00Z or without Z)
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        raise ValueError("Invalid occurred_at; use YYYY-MM-DD or ISO 8601")
+
+
+# def _events_for_prompt(user_id: int, days: int = 90, cap: int = 5) -> list[str]:
+#     """Auto-include a few recent life events; no UI flags, no IDs."""
+#     rows = (LifeEvent.query
+#             .filter(
+#                 LifeEvent.user_id == user_id,
+#                 LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=90)
+#             )
+#             .order_by(LifeEvent.occurred_at.desc())
+#             .limit(cap)
+#             .all())
+#     return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
+
+def _events_for_prompt(user_id: int, days: int | None = None, cap: int = 5) -> list[str]:
+    """
+    Fetch up to `cap` most recent life events.
+    If `days` is None => no date cutoff (useful for long-ago events like childhood).
+    """
+    q = (LifeEvent.query
+         .filter(LifeEvent.user_id == user_id)
+         .order_by(LifeEvent.occurred_at.desc()))
+    if days is not None:
+        q = q.filter(LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=days))
+    rows = q.limit(cap).all()
+    return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
+
+def _build_user_payload(dream_prompt: str, user_id: int, dream_text: str) -> str:
+    """Add a small Context block (if any events) before the Dream text."""
+    try:
+        ctx_items = _events_for_prompt(user_id)
+    except Exception:
+        logger.warning("life_event fetch failed", exc_info=True)
+        ctx_items = []
+
+    parts = [dream_prompt]
+    if ctx_items:
+        parts.append("Context:\n" + "\n".join(f"- {x}" for x in ctx_items))
+    parts.append("Dream:\n" + dream_text.strip())
+    return "\n\n".join(parts)
+
+def _strip_trailing_type_block(text: str) -> str:
+    if not text:
+        return text
+    if "**Type:**" in text:
+        return text.rsplit("**Type:**", 1)[0].rstrip()
+    if "Type:" in text:
+        return text.rsplit("Type:", 1)[0].rstrip()
+    return text
+
 # dream analysis
 @app.route("/api/chat", methods=["POST"])
 @login_required
@@ -859,36 +901,12 @@ def chat():
     logger.debug(f"Received JSON: {data}")
 
     message = data.get("message")
-    # dream_id = data.get("id")  # Optional - used if submitting from a draft
-  
     if not message:
         logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
 
     try:
-        # Step 1: Save dream
-        # if dream_id:
-        #     logger.info(f"Updating existing draft with ID {dream_id}")
-        #     dream = Dream.query.filter_by(id=dream_id, user_id=current_user.id).first()
-        #     if not dream:
-        #         logger.warning(f"No draft found with ID {dream_id} for user {current_user.id}")
-        #         return jsonify({"error": "Draft not found."}), 404
-        #     dream.text = message
-        #     dream.is_draft = False
-        #     # dream.created_at = datetime.utcnow()  # Optional: refresh timestamp
-        # else:
-        #     logger.info("Saving new dream to database...")
-        #     dream = Dream(
-        #         user_id=current_user.id,
-        #         text=message,
-        #         created_at=datetime.utcnow(),
-        #         is_draft=False
-        #     )
-        #     db.session.add(dream)
-        
-        # db.session.commit()
-        # logger.debug(f"Dream record saved with ID: {dream.id}")
-
+        # 1) Save bare dream
         logger.info("Saving dream to database...")
         dream = Dream(
             user_id=current_user.id,
@@ -897,101 +915,324 @@ def chat():
         )
         db.session.add(dream)
         db.session.commit()
+        logger.debug(f"Dream saved with ID: {dream.id}")
 
-        logger.debug(f"Dream saved in with ID: {dream.id}")
-
-        # Step 2: GPT Analysis
+        # 2) Build prompt (adds recent life events if any)
         dream_prompt = CATEGORY_PROMPTS["dream"]
-        prompt = f"{dream_prompt}\n\nDream:\n{message}"
-        logger.info("Sending prompt to OpenAI:")
+        prompt = _build_user_payload(dream_prompt, current_user.id, message)
+        logger.info("Sending prompt to OpenAI")
         logger.debug(f"Dream Analysis Prompt: {prompt}")
 
         response = call_openai_with_retry(prompt)
-
-        if not response.choices or not response.choices[0].message:
+        if not getattr(response, "choices", None) or not response.choices[0].message:
             logger.error("[ERROR] AI response was empty.")
             return jsonify({"error": "AI response was empty"}), 500
 
         content = response.choices[0].message.content.strip()
         logger.debug(f"Dream Analysis Reply: {content}")
 
+
+        # 3) Parse Analysis / Summary / Tone / Type
         analysis = summary = tone = None
+        type_val = None
+        is_question = is_nonsense = False
+        
+        # Accept bold (**X:**) or plain (X:)
+        ANALYSIS_MARK = "**Analysis:**" if "**Analysis:**" in content else ("Analysis:" if "Analysis:" in content else None)
+        SUMMARY_MARK  = "**Summary:**"  if "**Summary:**"  in content else ("Summary:"  if "Summary:"  in content else None)
+        TONE_MARK     = "**Tone:**"     if "**Tone:**"     in content else ("Tone:"     if "Tone:"     in content else None)
+        TYPE_MARK     = "**Type:**"     if "**Type:**"     in content else ("Type:"     if "Type:"     in content else None)
+        
+        # Positions (or -1 if missing)
+        iA = content.find(ANALYSIS_MARK) if ANALYSIS_MARK else -1
+        iS = content.find(SUMMARY_MARK)  if SUMMARY_MARK  else -1
+        iT = content.find(TONE_MARK)     if TONE_MARK     else -1
+        iY = content.find(TYPE_MARK)     if TYPE_MARK     else -1
+        
+        def slice_between(start_mark, start_idx, end_idx):
+            if start_idx == -1 or not start_mark:
+                return None
+            start = start_idx + len(start_mark)
+            end   = len(content) if end_idx == -1 else end_idx
+            return content[start:end].strip()
+        
+        # 1) Analysis = between Analysis and Summary
+        analysis = slice_between(ANALYSIS_MARK, iA, iS)
+        
+        # 2) Summary = between Summary and Tone (if Tone exists) else up to Type else to end
+        summary_end_idx = iT if iT != -1 else (iY if iY != -1 else -1)
+        summary = slice_between(SUMMARY_MARK, iS, summary_end_idx)
+        
+        # 3) Tone = between Tone and Type (if Type exists) else to end; keep only first line
+        tone_block = slice_between(TONE_MARK, iT, iY)
+        tone = tone_block.splitlines()[0].strip().rstrip(string.punctuation) if tone_block else None
+        
+        # 4) Type = whatever comes after Type marker (used for routing, not rendered)
+        type_val = slice_between(TYPE_MARK, iY, -1)
+        tv = (type_val or "").strip().lower()
+        is_question = tv.startswith("question")
+        is_nonsense = tv.startswith("decline")
+        
+        # 5) Fallbacks:
+        # If no Analysis/Summary/Tone were found at all, show the model text minus any 'Type:' lines
+        if not any([analysis, summary, tone]):
+            content_without_type = "\n".join(
+                ln for ln in content.splitlines()
+                if not ln.strip().lower().startswith(("**type:**", "type:"))
+            ).strip()
+            analysis = content_without_type or content
 
-        if "**Analysis:**" in content and "**Summary:**" in content and "**Tone:**" in content:
-            try:
-                parts = content.split("**Summary:**")
-                analysis_part = parts[0].replace("**Analysis:**", "").strip()
-                summary_tone_part = parts[1].strip().split("**Tone:**")
-                summary = summary_tone_part[0].strip()
-                tone_candidate = summary_tone_part[1].strip().rstrip(string.punctuation)
 
-                # Validate tone
-                valid_tones = list(TONE_TO_STYLE.keys())
-                if tone_candidate in valid_tones:
-                    tone = tone_candidate
-                else:
-                    logger.warning(f"[WARN] Invalid tone received: {repr(tone_candidate)}")
-                    tone = None
+        logger.debug(f"[parsed] is_question={is_question} is_nonsense={is_nonsense} tone={tone} summary_present={bool(summary)}")
 
-                analysis = analysis_part
+      
+        # if "**Type:**" in content:
+        #     type_val = content.rsplit("**Type:**", 1)[1].strip().lower()
+        #     is_question = type_val.startswith("question")
+        #     is_nonsense = type_val.startswith("decline")
+        # elif "Type:" in content:
+        #     type_val = content.rsplit("Type:", 1)[1].strip().lower()
+        #     is_question = type_val.startswith("question")
+        #     is_nonsense = type_val.startswith("decline")
+        
+        # 4) Update dream row
+        # type_val is one of: "Dream" | "Question" | "Decline"
+      
+        # --- Decline (non-dream / unrelated) ---
+        if is_nonsense:
+            # Use whatever we parsed; if parsing missed, fall back to whole content
+            # but strip trailing "Type:" so the user never sees it.
+            def _strip_trailing_type_block(text: str) -> str:
+                if not text: 
+                    return text
+                if "**Type:**" in text:
+                    return text.rsplit("**Type:**", 1)[0].rstrip()
+                if "Type:" in text:
+                    return text.rsplit("Type:", 1)[0].rstrip()
+                return text
+        
+            user_analysis = analysis or content
+            user_analysis = _strip_trailing_type_block(user_analysis)
+        
+            # Keep the row (don’t delete), hide it by default, and save the AI reply.
+            dream.analysis = user_analysis
+            dream.summary  = summary or "Non-dream entry"
+            dream.tone     = tone or "None"  # any valid default so FE layout stays stable
+            dream.is_question = False
+            dream.hidden   = True
+            dream.image_file = "placeholders/decline.svg"  # neutral icon so FE has a thumbnail
+            db.session.commit()
+        
+            # Return the same shape the FE expects
+            return jsonify({
+                "analysis": dream.analysis,
+                "summary": dream.summary,
+                "tone": dream.tone,
+                "dream_id": dream.id,
+                "stored": True,
+                "image_generated": False
+            }), 200
 
-            except Exception as parse_err:
-                logger.warning("Failed to parse analysis/summary/tone from AI response", exc_info=True)
-                analysis = content  # fallback
-        else:
-            logger.warning("[WARN] AI response format missing expected tags — using fallback")
-            analysis = content  # fallback
+        
+        # Question → keep, but no image
+        if is_question:
 
+            # TONE_ICON_FILE = {
+            #   "Nightmarish / dark": "placeholders/question-dark.svg",
+            #   "Peaceful / gentle": "placeholders/question-peaceful.svg",
+            #   "Whimsical / surreal": "placeholders/question-whimsical.svg",
+            #   "Romantic / nostalgic": "placeholders/question-romantic.svg",
+            #   "Epic / heroic": "placeholders/question-epic.svg",
+            #   "Ancient / mythic": "placeholders/question-ancient.svg",
+            #   "Futuristic / uncanny": "placeholders/question-future.svg",
+            #   "Elegant / ornate": "placeholders/question-elegant.svg",
+            # }
+            # dream.image_file = TONE_ICON_FILE.get(dream.tone, "placeholders/question.svg")
+          
+            dream.analysis = analysis
+            dream.summary  = summary
+            dream.tone     = tone
+            dream.is_question = True
+            dream.image_file = f"placeholders/question3.svg" 
+            db.session.commit()
+            return jsonify({
+                "analysis": analysis,
+                "summary": summary,
+                "tone": tone,
+                "dream_id": dream.id,
+                "stored": True,
+                "image_generated": False
+            }), 200
+        
+        # Dream → keep + image
         dream.analysis = analysis
-        dream.summary = summary
-        dream.tone = tone
+        dream.summary  = summary
+        dream.tone     = tone
+        dream.is_question = False
         db.session.commit()
-        logger.info("Dream analysis saved to database.")
-
+        
+        # proceed with your existing image generation path...
         return jsonify({
             "analysis": analysis,
             "summary": summary,
             "tone": tone,
-            "dream_id": dream.id
-        })
-
+            "dream_id": dream.id,
+            "stored": True,
+            "image_generated": True
+        }), 200
+      
     except Exception as e:
-        db.session.rollback()
-        logger.error("Exception occurred during dream processing:", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+      db.session.rollback()
+      logger.error("Exception during dream processing", exc_info=True)
+      return jsonify({"error": "internal error"}), 500
 
 
-# save dream for later analysis
-# @app.route("/api/draft", methods=["POST"])
-# @login_required
-# def draft():
-#     logger.info(" /api/draft called")
-#     data = request.get_json()
-#     logger.debug(f"Received JSON: {data}")
+# Create a life event
+@app.post("/api/life-events")
+@login_required
+def create_life_event():
+    data = request.get_json(force=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+    if len(title) > 120:
+        return jsonify({"error": "title too long (max 120)"}), 400
 
-#     message = data.get("message")
-#     if not message or not message.strip():
-#         return jsonify({"error": "Empty draft message."}), 400
-#         logger.debug("[WARN] Empty draft message.")
+    try:
+        occurred_at = _parse_iso_dt(data.get("occurred_at") or "")
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
 
-#     try:
-#         # Step 1: Save dream
-#         logger.info("Saving draft to database...")
-#         dream = Dream(
-#             user_id=current_user.id,
-#             text=message,
-#             created_at=datetime.utcnow(),
-#             is_draft=True
-#         )
-#         db.session.add(dream)
-#         db.session.commit()
-#         logger.debug(f"Dream saved in with ID: {dream.id}")
-#         return jsonify({"status": "ok", "dream_id": dream.id}), 200
+    ev = LifeEvent(
+        user_id=current_user.id,
+        title=title,
+        occurred_at=occurred_at,
+        details=(data.get("details") or None),
+        tags=(data.get("tags") or None),  # list or None; OK with JSON column
+    )
+    db.session.add(ev)
+    db.session.commit()
 
-#     except Exception as e:
-#         db.session.rollback()
-#         logger.error("Exception occurred saving draft:", exc_info=True)
-#         return jsonify({"error": str(e)}), 500
+    return jsonify({
+        "id": ev.id,
+        "title": ev.title,
+        "occurred_at": ev.occurred_at.isoformat() + "Z",
+        "details": ev.details,
+        "tags": ev.tags,
+        "created_at": ev.created_at.isoformat() + "Z",
+    }), 201
+
+
+# Update a life event
+@app.patch("/api/life-events/<int:event_id>")
+@login_required
+def update_life_event(event_id):
+    ev = LifeEvent.query.filter_by(id=event_id, user_id=current_user.id).first()
+    if not ev:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(force=True) or {}
+
+    if "title" in data:
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "title cannot be empty"}), 400
+        if len(title) > 120:
+            return jsonify({"error": "title too long (max 120)"}), 400
+        ev.title = title
+
+    if "occurred_at" in data and data.get("occurred_at"):
+        try:
+            ev.occurred_at = _parse_iso_dt(data["occurred_at"])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    if "details" in data:
+        ev.details = (data.get("details") or None)
+
+    if "tags" in data:
+        ev.tags = (data.get("tags") or None)
+
+    db.session.commit()
+
+    return jsonify({
+        "id": ev.id,
+        "title": ev.title,
+        "occurred_at": ev.occurred_at.isoformat() + "Z",
+        "details": ev.details,
+        "tags": ev.tags,
+        "created_at": ev.created_at.isoformat() + "Z",
+    })
+
+
+# Delete life event
+@app.delete("/api/life-events/<int:event_id>")
+@login_required
+def delete_life_event(event_id):
+    ev = LifeEvent.query.filter_by(id=event_id, user_id=current_user.id).first()
+    if not ev:
+        return jsonify({"error": "not found"}), 404
+    db.session.delete(ev)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# Fetch all life events for the UI/Editor
+@app.get("/api/life-events")
+@login_required
+def list_life_events():
+    page = max(int(request.args.get("page", 1)), 1)
+    per_page = min(max(int(request.args.get("per_page", 20)), 1), 100)
+
+    since = request.args.get("since")  # optional
+    until = request.args.get("until")  # optional
+
+    q = LifeEvent.query.filter(LifeEvent.user_id == current_user.id)
+    if since:
+        try:
+            q = q.filter(LifeEvent.occurred_at >= _parse_iso_dt(since))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    if until:
+        try:
+            q = q.filter(LifeEvent.occurred_at <= _parse_iso_dt(until))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+    q = q.order_by(desc(LifeEvent.occurred_at), desc(LifeEvent.id))
+    items = q.limit(per_page).offset((page - 1) * per_page).all()
+
+    return jsonify({
+        "page": page,
+        "per_page": per_page,
+        "items": [{
+            "id": r.id,
+            "title": r.title,
+            "occurred_at": r.occurred_at.isoformat() + "Z",
+            "details": r.details,
+            "tags": r.tags,
+            "created_at": r.created_at.isoformat() + "Z",
+        } for r in items]
+    })
+  
+# Tiny endpoint to fetch recent events (for the picker)
+# GET /api/life-events/recent?days=90&limit=10
+@app.get("/api/life-events/recent")
+@login_required
+def recent_life_events():
+    days = int(request.args.get("days", 90))
+    limit = int(request.args.get("limit", 10))
+    rows = (LifeEvent.query
+            .filter(LifeEvent.user_id == current_user.id,
+                    LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=days))
+            .order_by(LifeEvent.occurred_at.desc())
+            .limit(limit).all())
+    return jsonify([{
+        "id": r.id,
+        "title": r.title,
+        "occurred_at": r.occurred_at.isoformat() + "Z"
+    } for r in rows])
+
 
 
 # used to generate smaller images for journal and tiles
@@ -1006,21 +1247,30 @@ def generate_resized_image(input_path, output_path, size=(48, 48)):
         logger.error(f"[ERROR] Failed to create resized image ({size}): {e}")
 
 
-@app.route("/api/image_generate", methods=["POST"])
+@app.post("/api/image_generate")
 @login_required
 def generate_dream_image():
     logger.info(" /api/image_generate called")
     data = request.get_json()
     dream_id = data.get("dream_id")
 
+    # 1) Input guard
     if not dream_id:
         logger.debug("[WARN] Missing dream ID.")
         return jsonify({"error": "Missing dream ID."}), 400
 
+    # 2) Lookup + auth (keep separate => correct 404 semantics)
     dream = Dream.query.get(dream_id)
-
-    if not dream or dream.user_id != current_user.id:
+    if dream is None or dream.user_id != current_user.id:
         return jsonify({"error": "Dream not found or unauthorized"}), 404
+
+    # 3) Skip conditions (no need to check "not dream" again)
+    # if dream.hidden or dream.is_question or not dream.summary or not dream.tone:
+    if dream.hidden or dream.is_question:
+        return jsonify({
+            "skipped": True,
+            "image_file": dream.image_file  # no need for getattr; dream exists
+        }), 200
 
     message = dream.text
     tone = dream.tone
