@@ -1020,7 +1020,7 @@ def chat():
             dream.tone     = tone or "None"  # any valid default so FE layout stays stable
             dream.is_question = False
             dream.hidden   = True
-            dream.image_file = "placeholders/decline.svg"  # neutral icon so FE has a thumbnail
+            dream.image_file = "placeholders/decline.png"  # neutral icon so FE has a thumbnail
             db.session.commit()
         
             # Return the same shape the FE expects
@@ -1036,24 +1036,11 @@ def chat():
         
         # Question → keep, but no image
         if is_question:
-
-            # TONE_ICON_FILE = {
-            #   "Nightmarish / dark": "placeholders/question-dark.svg",
-            #   "Peaceful / gentle": "placeholders/question-peaceful.svg",
-            #   "Whimsical / surreal": "placeholders/question-whimsical.svg",
-            #   "Romantic / nostalgic": "placeholders/question-romantic.svg",
-            #   "Epic / heroic": "placeholders/question-epic.svg",
-            #   "Ancient / mythic": "placeholders/question-ancient.svg",
-            #   "Futuristic / uncanny": "placeholders/question-future.svg",
-            #   "Elegant / ornate": "placeholders/question-elegant.svg",
-            # }
-            # dream.image_file = TONE_ICON_FILE.get(dream.tone, "placeholders/question.svg")
-          
             dream.analysis = analysis
             dream.summary  = summary
             dream.tone     = tone
             dream.is_question = True
-            dream.image_file = f"placeholders/question3.svg" 
+            dream.image_file = f"placeholders/question2.png" 
             db.session.commit()
             return jsonify({
                 "analysis": analysis,
