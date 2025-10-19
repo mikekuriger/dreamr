@@ -3,6 +3,7 @@ from authlib.integrations.flask_client import OAuth # for google auth
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from flask_cors import CORS
+from flask import current_app
 from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint, render_template, render_template_string
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_mail import Message, Mail
@@ -39,8 +40,8 @@ import uuid
 
 log_file_path = "dreamr.log"
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)  # or INFO if you want less detail
-# Clear any existing handlers (especially important when running under Gunicorn)
+logger.setLevel(logging.DEBUG)
+# Clear any existing handlers
 logger.handlers = []
 formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 file_handler = logging.FileHandler(log_file_path)
@@ -55,6 +56,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
 app.config.from_pyfile('config.py')
+# CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "https://dreamr-us-west-01.zentha.me", "http://localhost:5173"])
 CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "http://localhost:5173"])
 
 db = SQLAlchemy(app)
@@ -62,6 +64,12 @@ login_manager = LoginManager(app)
 login_manager.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
+
+WEB_CLIENT_ID = "846080686597-61d3v0687vomt4g4tl7rueu7rv9qrari.apps.googleusercontent.com"
+IOS_CLIENT_ID = "846080686597-8u85pj943ilkmlt583f3tct5h9ca0c3t.apps.googleusercontent.com"
+ALLOWED_AUDS = {WEB_CLIENT_ID, IOS_CLIENT_ID}
+ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
+
 
 
 # Password reset with token (when user clicks the email)
@@ -226,9 +234,16 @@ class Dream(db.Model):
     notes_updated_at = db.Column(db.DateTime, nullable=True)
     is_question = db.Column(db.Boolean, nullable=False, server_default=db.text("0"))
 
-    def set_notes(self, notes_text: str | None):
-        self.notes = (notes_text or "").strip() or None
+    def set_notes(self, notes_text):
+        # Only treat explicit None as clear
+        if notes_text is None:
+            self.notes = None
+        else:
+            # Optional normalization (keeps user’s spaces):
+            txt = str(notes_text).replace("\r\n", "\n")
+            self.notes = txt
         self.notes_updated_at = datetime.utcnow()
+
 
     def __repr__(self):
         return f"<Dream id={self.id} user_id={self.user_id} hidden={self.hidden}>"
@@ -265,6 +280,28 @@ class PasswordResetToken(db.Model):
     request_ip = db.Column(db.String(64))
     user_agent = db.Column(db.String(256))
     user = db.relationship('User')
+
+
+
+# Notes
+NOTES_MAX_LEN = 8000
+NOTES_AI_ENABLED = False
+REANALYZE_WITH_NOTES_ALLOWED = False
+NOTES_POLICY_VERSION = "v1"
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    # store naive UTC in DB; emit ISO with Z for API consistency
+    return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+
+def _notes_conflict(d: Dream, last_seen: str | None) -> bool:
+    """True if client-supplied last_seen doesn't match current server timestamp."""
+    if not last_seen:
+        return False
+    cur = _iso_utc(d.notes_updated_at)
+    return cur is not None and last_seen.strip() != cur.strip()
+
 
 def _hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()
@@ -404,37 +441,124 @@ def auth_google():
         db.session.add(user)
         db.session.commit()
 
-    login_user(user)
+    # login_user(user)
+    login_user(user, remember=True, duration=timedelta(days=90))
     # return redirect("/dashboard?confirmed=1")
     return redirect("/dashboard")
+
 
 
 # for google logins via mobile app
 @app.route('/api/google_login', methods=['POST'])
 def api_google_login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     token = data.get('id_token')
+    if not token:
+        return jsonify({"error": "missing id_token"}), 400
 
     try:
-        # ✅ Correct usage: instantiate request object
         req = google_requests.Request()
-        # idinfo = id_token.verify_oauth2_token(token, req)
-        idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
+        # 1) Verify signature & claims, but don't pin the audience yet
+        idinfo = id_token.verify_oauth2_token(token, req, audience=None)
 
-        email = idinfo['email']
-        name = idinfo.get('name')
+        aud = idinfo.get("aud")
+        azp = idinfo.get("azp")
+        iss = idinfo.get("iss")
+        email = idinfo.get("email")
+        email_verified = idinfo.get("email_verified", False)
 
+        # 2) Strict issuer check
+        if iss not in ALLOWED_ISS:
+            raise ValueError(f"bad iss: {iss}")
+
+        # 3) Accept Web or iOS client as audience (common on native apps)
+        if aud not in ALLOWED_AUDS:
+            # Some Google flows put Web client in azp and iOS in aud — allow either.
+            if azp not in ALLOWED_AUDS:
+                raise ValueError(f"bad aud: {aud} azp: {azp}")
+
+        if not email or not email_verified:
+            raise ValueError("email not verified")
+
+        # 4) Normal login / signup flow
         user = User.query.filter_by(email=email).first()
         if not user:
-            user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+            user = User(email=email, first_name=idinfo.get("name") or "Unknown", password='', timezone='')
             db.session.add(user)
             db.session.commit()
 
         login_user(user)
         return jsonify({"success": True})
 
-    except ValueError:
-        return jsonify({"error": "Invalid token"}), 400
+    except Exception as e:
+        # Optional: peek safe fields for troubleshooting (no full token logging)
+        try:
+            logger.info("google login failed: aud=%s azp=%s iss=%s email=%s err=%s",
+                     idinfo.get("aud") if 'idinfo' in locals() else None,
+                     idinfo.get("azp") if 'idinfo' in locals() else None,
+                     idinfo.get("iss") if 'idinfo' in locals() else None,
+                     idinfo.get("email") if 'idinfo' in locals() else None,
+                     e)
+        except Exception:
+            logger.info("google login failed: %s", e)
+        return jsonify({"error": "Invalid token, naughty!"}), 400
+
+        
+# for google logins via mobile app
+# @app.route('/api/google_login', methods=['POST'])
+# def api_google_login():
+#     data = request.get_json()
+#     token = data.get('id_token')
+
+#     try:
+#         # ✅ Correct usage: instantiate request object
+#         req = google_requests.Request()
+#         idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
+
+#         email = idinfo['email']
+#         name = idinfo.get('name')
+
+#         user = User.query.filter_by(email=email).first()
+#         if not user:
+#             user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+#             db.session.add(user)
+#             db.session.commit()
+
+#         login_user(user)
+#         return jsonify({"success": True})
+
+#     except ValueError:
+#         return jsonify({"error": "Invalid token, sorry"}), 400
+
+
+# @app.route('/api/google_login', methods=['POST'])
+# def api_google_login():
+#     data = request.get_json()
+#     token = data.get('id_token')
+#     current_app.logger.info("google_login: hit, token_len=%s", len(token) if token else 0)
+
+#     try:
+#         # ✅ Correct usage: instantiate request object
+#         req = google_requests.Request()
+#         idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
+#         current_app.logger.info("google_login: verify ok aud=%s iss=%s email=%s",
+#                                 idinfo.get("aud"), idinfo.get("iss"), idinfo.get("email"))
+
+#         email = idinfo['email']
+#         name = idinfo.get('name')
+
+#         user = User.query.filter_by(email=email).first()
+#         if not user:
+#             user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+#             db.session.add(user)
+#             db.session.commit()
+
+#         # login_user(user)
+#         login_user(user, remember=True, duration=timedelta(days=90))
+#         return jsonify({"success": True})
+
+#     except ValueError:
+#         return jsonify({"error": "Invalid token"}), 400
 
 
 # New user registration
@@ -732,10 +856,9 @@ def confirm_account(token):
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    data = request.get_json()
-    # email = data.get("email")
-    email = data.get("email", "").strip().lower()  # 🔒 Normalize email
-    password = data.get("password")
+    data = request.get_json() or {}
+    email = data.get("email", "").strip().lower() 
+    password = data.get("password") or ""
     user = User.query.filter_by(email=email).first()
     if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
         return jsonify({"error": "Invalid credentials"}), 401
@@ -774,8 +897,11 @@ def call_openai_with_retry(prompt, retries=3, delay=2):
                 raise
 
               
-def convert_dream_to_image_prompt(message, tone=None):
-    base_prompt = CATEGORY_PROMPTS["image"]
+def convert_dream_to_image_prompt(message, tone=None, quality="low"):
+    if quality == "low":
+        base_prompt = CATEGORY_PROMPTS["lq_image"]
+    else:
+        base_prompt = CATEGORY_PROMPTS["image"]
   
     tone = tone.strip() if tone else None
     logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
@@ -827,6 +953,7 @@ def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
 # --- NEW: helpers ------------------------------------------------------------
 _TYPE_LINE = r"^\s*\**\s*Type\s*:\s*(Dream|Question)\s*\**\s*$"
 _FLAGS = re.I | re.M
+_TYPE_RE = re.compile(_TYPE_LINE, _FLAGS)
 
 def _parse_is_question(ai_text: str) -> bool:
     m = _TYPE_RE.search(ai_text or "")
@@ -867,7 +994,8 @@ def _events_for_prompt(user_id: int, days: int | None = None, cap: int = 5) -> l
     if days is not None:
         q = q.filter(LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=days))
     rows = q.limit(cap).all()
-    return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
+    return [f"{r.occurred_at.date()}: {r.details}" for r in rows]
+    # return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
 
 def _build_user_payload(dream_prompt: str, user_id: int, dream_text: str) -> str:
     """Add a small Context block (if any events) before the Dream text."""
@@ -985,19 +1113,6 @@ def chat():
 
         logger.debug(f"[parsed] is_question={is_question} is_nonsense={is_nonsense} tone={tone} summary_present={bool(summary)}")
 
-      
-        # if "**Type:**" in content:
-        #     type_val = content.rsplit("**Type:**", 1)[1].strip().lower()
-        #     is_question = type_val.startswith("question")
-        #     is_nonsense = type_val.startswith("decline")
-        # elif "Type:" in content:
-        #     type_val = content.rsplit("Type:", 1)[1].strip().lower()
-        #     is_question = type_val.startswith("question")
-        #     is_nonsense = type_val.startswith("decline")
-        
-        # 4) Update dream row
-        # type_val is one of: "Dream" | "Question" | "Decline"
-      
         # --- Decline (non-dream / unrelated) ---
         if is_nonsense:
             # Use whatever we parsed; if parsing missed, fall back to whole content
@@ -1017,7 +1132,7 @@ def chat():
             # Keep the row (don’t delete), hide it by default, and save the AI reply.
             dream.analysis = user_analysis
             dream.summary  = summary or "Non-dream entry"
-            dream.tone     = tone or "None"  # any valid default so FE layout stays stable
+            dream.tone     = None
             dream.is_question = False
             dream.hidden   = True
             dream.image_file = "placeholders/decline.png"  # neutral icon so FE has a thumbnail
@@ -1025,12 +1140,14 @@ def chat():
         
             # Return the same shape the FE expects
             return jsonify({
-                "analysis": dream.analysis,
-                "summary": dream.summary,
-                "tone": dream.tone,
                 "dream_id": dream.id,
-                "stored": True,
-                "image_generated": False
+                "analysis": dream.analysis,
+                # "summary": dream.summary,
+                "tone": dream.tone,
+                "is_question": False,
+                "should_generate_image": False,
+                # "image_url": dream.image_file,
+                # "stored": True
             }), 200
 
         
@@ -1038,17 +1155,19 @@ def chat():
         if is_question:
             dream.analysis = analysis
             dream.summary  = summary
-            dream.tone     = tone
+            dream.tone     = None
             dream.is_question = True
             dream.image_file = f"placeholders/question2.png" 
             db.session.commit()
             return jsonify({
-                "analysis": analysis,
-                "summary": summary,
-                "tone": tone,
                 "dream_id": dream.id,
-                "stored": True,
-                "image_generated": False
+                "analysis": dream.analysis,
+                # "summary": dream.summary,
+                "tone": dream.tone,
+                "is_question": True,                # <-- give the client a real flag
+                "should_generate_image": False,     # <-- authoritative “don’t start”
+                # "image_url": dream.image_file,
+                # "stored": True
             }), 200
         
         # Dream → keep + image
@@ -1058,14 +1177,18 @@ def chat():
         dream.is_question = False
         db.session.commit()
         
-        # proceed with your existing image generation path...
+        # only dreams are allowed to enqueue image
+        # enqueue_image(dream.id)
+
         return jsonify({
-            "analysis": analysis,
-            "summary": summary,
-            "tone": tone,
             "dream_id": dream.id,
-            "stored": True,
-            "image_generated": True
+            "analysis": dream.analysis,
+            # "summary": dream.summary,
+            "tone": dream.tone,
+            "is_question": False,
+            "should_generate_image": True,          # <-- authoritative “start”
+            # "image_url": dream.image_file,
+            # "stored": True
         }), 200
       
     except Exception as e:
@@ -1240,6 +1363,7 @@ def generate_dream_image():
     logger.info(" /api/image_generate called")
     data = request.get_json()
     dream_id = data.get("dream_id")
+    quality="high"
 
     # 1) Input guard
     if not dream_id:
@@ -1264,15 +1388,20 @@ def generate_dream_image():
 
     try:
         logger.info("Converting dream to image prompt...")
-        image_prompt = convert_dream_to_image_prompt(message, tone)
-        logger.debug(f"Image prompt: {image_prompt}")
+        q = (quality or "low").lower()
+        image_prompt = convert_dream_to_image_prompt(message, tone, q)
+        # logger.debug(f"Image prompt: {image_prompt}")
         logger.info("Sending image generation request...")
 
+        # Supported values are: 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-0721-mini-alpha', 'dall-e-2', and 'dall-e-3'
+        model = "dall-e-2" if q == "low" else "dall-e-3"
+        size  = "512x512"  if q == "low" else "1024x1024"
+            
         image_response = client.images.generate(
-            model="dall-e-3",
+            model=model,
             prompt=image_prompt,
             n=1,
-            size="1024x1024",
+            size=size,
             response_format="url"
         )
         image_url = image_response.data[0].url
@@ -1290,6 +1419,25 @@ def generate_dream_image():
         with open(image_path, "wb") as f:
             f.write(img_response.content)
         logger.info(f"Image saved to {image_path}")
+
+        # image_response = client.images.generate(
+        #     model="gpt-image-1",
+        #     prompt=image_prompt,
+        #     n=1,
+        #     size="1024x1024",
+        # )
+        # b64 = image_response.data[0].b64_json
+        # img_bytes = base64.b64decode(b64)
+        # logger.info(f"Image data received")
+
+        # filename = f"{uuid.uuid4().hex}.png"
+        # image_path = os.path.join("static", "images", "dreams", filename)
+        # tile_path = os.path.join("static", "images", "tiles", filename)
+        # os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+        # with open(image_path, "wb") as f:
+        #     f.write(img_bytes)
+        # logger.info(f"Image saved to {image_path}")
 
         generate_resized_image(image_path, tile_path, size=(256, 256))
 
@@ -1366,7 +1514,62 @@ def get_alldreams():
         } for d in dreams
     ])
 
-  
+# fetch gallery images
+@app.route("/api/gallery", methods=["GET"])
+@login_required
+def get_gallery():
+    user_tz = ZoneInfo(current_user.timezone or "UTC")
+
+    # dreams = Dream.query.filter(
+    #     Dream.user_id == current_user.id,
+    #     or_(Dream.hidden == False, Dream.hidden.is_(None))
+    # ).order_by(Dream.created_at.desc()).all()
+
+    dreams = (
+        Dream.query
+        .filter(
+            Dream.user_id == current_user.id,
+            or_(Dream.hidden == False, Dream.hidden.is_(None)),
+
+            # has an image filename
+            Dream.image_file.isnot(None),
+            func.length(func.trim(Dream.image_file)) > 0,
+
+            # EXCLUDE placeholders (matches 'placeholder' or 'placeholders')
+            ~func.lower(Dream.image_file).like("%placehold%"),
+
+            # EXCLUDE AI questions
+            or_(Dream.is_question == False, Dream.is_question.is_(None)),
+        )
+        .order_by(Dream.created_at.desc())
+        .all()
+    )
+
+    def convert_created_at(dt):
+        try:
+            print(f"Original datetime: {dt} (tzinfo={dt.tzinfo})")
+            return dt.replace(tzinfo=timezone.utc).astimezone(user_tz).isoformat()
+        except Exception as e:
+            print(f"[ERROR] Timestamp conversion failed: {e}")
+            traceback.print_exc()
+            return None
+
+    return jsonify([
+        {
+            "id": d.id,
+            "summary": d.summary,
+            "text": d.text,
+            "analysis": d.analysis,
+            "tone": d.tone,
+            "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
+            "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
+            "created_at": convert_created_at(d.created_at) if d.created_at else None,
+            "notes": d.notes
+        } for d in dreams
+    ])
+
+    
+# fetch dreams
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
@@ -1375,7 +1578,6 @@ def get_dreams():
     dreams = Dream.query.filter(
         Dream.user_id == current_user.id,
         or_(Dream.hidden == False, Dream.hidden.is_(None))
-        # or_(Dream.is_draft == False, Dream.is_draft.is_(None))
     ).order_by(Dream.created_at.desc()).all()
     
     def convert_created_at(dt):
@@ -1396,7 +1598,8 @@ def get_dreams():
             "tone": d.tone,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
-            "created_at": convert_created_at(d.created_at) if d.created_at else None
+            "created_at": convert_created_at(d.created_at) if d.created_at else None,
+            "notes": d.notes
         } for d in dreams
     ])
 
@@ -1437,6 +1640,122 @@ def toggle_hidden_dream(dream_id):
     dream.hidden = not dream.hidden
     db.session.commit()
     return jsonify({"hidden": dream.hidden})
+
+
+# --- for notes ---
+@app.patch("/api/dreams/<int:dream_id>/notes")
+@login_required
+def patch_dream_notes(dream_id):
+    """
+    Update/clear personal notes on a dream.
+    - Never logs note content.
+    - 8k hard cap.
+    - Optional optimistic concurrency via last_seen_notes_updated_at.
+    """
+    # Lookup + ownership guard; return 404 on missing OR not-owned
+    dream = Dream.query.get(dream_id)
+    if dream is None or dream.user_id != current_user.id:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+
+    # Validate 'notes'
+    if "notes" not in data:
+        return jsonify({"error": "invalid_request", "message": "Field 'notes' is required"}), 422
+    notes = data.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        return jsonify({"error": "invalid_request", "message": "Field 'notes' must be string or null"}), 422
+    if isinstance(notes, str) and len(notes) > NOTES_MAX_LEN:
+        return jsonify({"error": "too_large", "message": f"Notes exceed {NOTES_MAX_LEN} characters."}), 413
+
+    last_seen = data.get("last_seen_notes_updated_at")
+
+    # Conflict?
+    if _notes_conflict(dream, last_seen):
+        # DO NOT log content; include current server state only
+        logger.info("notes_update_conflict user_id=%s dream_id=%s", current_user.id, dream.id)
+        return jsonify({
+            "error": "conflict",
+            "message": "Notes were updated elsewhere.",
+            "current": {
+                "notes": dream.notes,
+                "notes_updated_at": _iso_utc(dream.notes_updated_at)
+            }
+        }), 409
+
+    # Normalize & short-circuit if unchanged (trim compare)
+    incoming = (notes or "").strip() or None
+    if (dream.notes or "").strip() == (incoming or ""):
+        # return 200 with current object for simplicity/consistency
+        return jsonify({
+            "id": dream.id,
+            "notes": dream.notes,
+            "notes_updated_at": _iso_utc(dream.notes_updated_at)
+        }), 200
+
+    # Apply update (set_notes already bumps notes_updated_at)
+    dream.set_notes(incoming)
+    db.session.commit()
+
+    # Log IDs only—never the text
+    logger.info("notes_updated user_id=%s dream_id=%s", current_user.id, dream.id)
+
+    return jsonify({
+        "id": dream.id,
+        "notes": dream.notes,
+        "notes_updated_at": _iso_utc(dream.notes_updated_at)
+    }), 200
+
+
+# --- reanalyze the dream with notes included scaffold (policy OFF by default) ---
+@app.post("/api/dreams/<int:dream_id>/reanalyze")
+@login_required
+def reanalyze_dream(dream_id):
+    """
+    Trigger a re-analysis. Notes inclusion is disabled by policy for now,
+    but we return explicit policy metadata so we can flip it later.
+    """
+    dream = Dream.query.get(dream_id)
+    if dream is None or dream.user_id != current_user.id:
+        return jsonify({"error": "not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    include_notes_req = (data.get("include_notes") or "auto").lower()
+    if include_notes_req not in ("never", "auto", "always"):
+        return jsonify({"error": "invalid_request", "message": "include_notes must be 'never'|'auto'|'always'"}), 422
+
+    # Resolver (OFF today)
+    included_notes = False
+    reason = "disabled_by_policy"  # future: "no_consent"|"per_dream_block"|"ok"
+
+    # If you later enable, gate on NOTES_AI_ENABLED && REANALYZE_WITH_NOTES_ALLOWED
+    # and user/dream consents before setting included_notes=True.
+
+    # If you later queue jobs, put a job_id here; keeping sync for now.
+    return jsonify({
+        "included_notes": included_notes,
+        "notes_policy_version": NOTES_POLICY_VERSION,
+        "notes_policy_reason": reason
+    }), 200
+
+# get notes
+@app.get("/api/dreams/<int:dream_id>/notes")
+@login_required
+def get_dream_notes(dream_id):
+    dream = Dream.query.get(dream_id)
+    if dream is None or dream.user_id != current_user.id:
+        return jsonify({"error": "not found"}), 404
+    # Never log content
+    logger.info("notes_read user_id=%s dream_id=%s", current_user.id, dream.id)
+    def _iso_utc(dt):
+        from datetime import timezone
+        return dt.replace(tzinfo=timezone.utc).isoformat().replace("+00:00","Z") if dt else None
+    return jsonify({
+        "id": dream.id,
+        "notes": dream.notes,
+        "notes_updated_at": _iso_utc(dream.notes_updated_at),
+    })
+
 
 
 @app.route("/api/check_auth", methods=["GET"])
