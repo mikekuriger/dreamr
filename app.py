@@ -1,10 +1,10 @@
 ### File: app.py
 from authlib.integrations.flask_client import OAuth # for google auth
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 from enum import Enum
 from flask_cors import CORS
-from flask import current_app
-from flask import Flask, request, jsonify, url_for, redirect, session, Blueprint, render_template, render_template_string
+from flask import abort, Blueprint, current_app, Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user, UserMixin
 from flask_mail import Message, Mail
 from flask_migrate import Migrate
@@ -269,6 +269,9 @@ class LifeEvent(db.Model):
     def __repr__(self):
         return f"<LifeEvent id={self.id} user_id={self.user_id} title={self.title!r}>"
 
+
+
+
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
@@ -280,7 +283,6 @@ class PasswordResetToken(db.Model):
     request_ip = db.Column(db.String(64))
     user_agent = db.Column(db.String(256))
     user = db.relationship('User')
-
 
 
 # Notes
@@ -502,63 +504,6 @@ def api_google_login():
         except Exception:
             logger.info("google login failed: %s", e)
         return jsonify({"error": "Invalid token, naughty!"}), 400
-
-        
-# for google logins via mobile app
-# @app.route('/api/google_login', methods=['POST'])
-# def api_google_login():
-#     data = request.get_json()
-#     token = data.get('id_token')
-
-#     try:
-#         # ✅ Correct usage: instantiate request object
-#         req = google_requests.Request()
-#         idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
-
-#         email = idinfo['email']
-#         name = idinfo.get('name')
-
-#         user = User.query.filter_by(email=email).first()
-#         if not user:
-#             user = User(email=email, first_name=name or "Unknown", password='', timezone='')
-#             db.session.add(user)
-#             db.session.commit()
-
-#         login_user(user)
-#         return jsonify({"success": True})
-
-#     except ValueError:
-#         return jsonify({"error": "Invalid token, sorry"}), 400
-
-
-# @app.route('/api/google_login', methods=['POST'])
-# def api_google_login():
-#     data = request.get_json()
-#     token = data.get('id_token')
-#     current_app.logger.info("google_login: hit, token_len=%s", len(token) if token else 0)
-
-#     try:
-#         # ✅ Correct usage: instantiate request object
-#         req = google_requests.Request()
-#         idinfo = id_token.verify_oauth2_token(token, req, google_creds['web']['client_id'])
-#         current_app.logger.info("google_login: verify ok aud=%s iss=%s email=%s",
-#                                 idinfo.get("aud"), idinfo.get("iss"), idinfo.get("email"))
-
-#         email = idinfo['email']
-#         name = idinfo.get('name')
-
-#         user = User.query.filter_by(email=email).first()
-#         if not user:
-#             user = User(email=email, first_name=name or "Unknown", password='', timezone='')
-#             db.session.add(user)
-#             db.session.commit()
-
-#         # login_user(user)
-#         login_user(user, remember=True, duration=timedelta(days=90))
-#         return jsonify({"success": True})
-
-#     except ValueError:
-#         return jsonify({"error": "Invalid token"}), 400
 
 
 # New user registration
@@ -927,20 +872,139 @@ def convert_dream_to_image_prompt(message, tone=None, quality="low"):
     return response.choices[0].message.content.strip()
 
 
-# Add Life events for added context
-def add_life_event(user_id: int, title: str, occurred_at: datetime, details: str | None = None, tags: list[str] | None = None):
+# Use profile details in prompt
+def _age_years(birthdate: date | None, asof: date | None = None) -> int | None:
+    if not birthdate:
+        return None
+    asof = asof or datetime.now(timezone.utc).date()
+    y = asof.year - birthdate.year
+    return y - 1 if (asof.month, asof.day) < (birthdate.month, birthdate.day) else y
+
+
+def intro_line_for_prompt(user, *, include_gender: bool = True, include_timezone: bool = False) -> str | None:
+    """
+    Build something like:
+      "My name is Mike. I'm a 46-year-old male, based in Los Angeles (America/Los_Angeles)."
+    Returns None if nothing useful is available.
+    """
+    bits = []
+
+    # if user.first_name:
+        # bits.append(f"My name is {user.first_name}.")
+
+    age = _age_years(user.birthdate)
+    who = []
+    if age is not None:
+        who.append(f"{age}-year-old")
+    if include_gender and user.gender:
+        who.append(user.gender.strip().lower())
+    if who:
+        bits.append("I'm a " + " ".join(who) + ".")
+
+    if include_timezone and user.timezone:
+        city = user.timezone.split("/")[-1].replace("_", " ")
+        bits.append(f"Based in {city} ({user.timezone}).")
+
+    return " ".join(bits) or None
+
+
+api = Blueprint("api", __name__)
+def _life_event_to_dict(ev: LifeEvent):
+    return {
+        "id": ev.id,
+        "title": ev.title,
+        "details": ev.details,
+        "occurred_at": ev.occurred_at.replace(tzinfo=timezone.utc).isoformat(),
+        "tags": ev.tags or [],
+        "created_at": (ev.created_at.replace(tzinfo=timezone.utc).isoformat()
+                       if ev.created_at else None),
+    }
+
+@api.route("/api/life_events", methods=["GET"])
+@login_required
+def list_life_events():
+    # ?limit=50 (default), newest first
+    try:
+        limit = min(int(request.args.get("limit", 50)), 200)
+    except Exception:
+        limit = 50
+    q = LifeEvent.query.filter_by(user_id=current_user.id).order_by(desc(LifeEvent.occurred_at)).limit(limit)
+    return jsonify([_life_event_to_dict(ev) for ev in q.all()])
+
+@api.route("/api/life_events", methods=["POST"])
+@login_required
+def create_life_event():
+    data = request.get_json(force=True, silent=False) or {}
+    title = (data.get("title") or "").strip()
+    occurred_at_raw = data.get("occurred_at")
+    if not title or not occurred_at_raw:
+        abort(400, "title and occurred_at are required")
+    try:
+        occurred_at = datetime.fromisoformat(occurred_at_raw.replace("Z", "+00:00"))
+    except Exception:
+        abort(400, "occurred_at must be ISO8601")
+
+    details = (data.get("details") or None)
+    tags = data.get("tags") or None
+    if tags is not None and not isinstance(tags, list):
+        abort(400, "tags must be a list of strings")
+
     ev = LifeEvent(
-        user_id=user_id,
-        title=title.strip(),
+        user_id=current_user.id,
+        title=title,
+        details=details,
         occurred_at=occurred_at,
-        details=(details or None),
-        tags=(tags or None),
+        tags=tags,
     )
     db.session.add(ev)
     db.session.commit()
-    return ev
+    return jsonify(_life_event_to_dict(ev)), 201
 
-# add personal notes to a dream
+@api.route("/api/life_events/<int:event_id>", methods=["PATCH"])
+@login_required
+def update_life_event(event_id: int):
+    ev = LifeEvent.query.filter_by(id=event_id, user_id=current_user.id).first()
+    if not ev:
+        abort(404)
+
+    data = request.get_json(force=True, silent=False) or {}
+
+    if "title" in data:
+        t = (data.get("title") or "").strip()
+        if not t:
+            abort(400, "title cannot be empty")
+        ev.title = t
+
+    if "details" in data:
+        ev.details = data.get("details") or None
+
+    if "occurred_at" in data:
+        try:
+            ev.occurred_at = datetime.fromisoformat(data["occurred_at"].replace("Z", "+00:00"))
+        except Exception:
+            abort(400, "occurred_at must be ISO8601")
+
+    if "tags" in data:
+        tags = data.get("tags")
+        if tags is not None and not isinstance(tags, list):
+            abort(400, "tags must be a list")
+        ev.tags = tags or None
+
+    db.session.commit()
+    return jsonify(_life_event_to_dict(ev))
+
+@api.route("/api/life_events/<int:event_id>", methods=["DELETE"])
+@login_required
+def delete_life_event(event_id: int):
+    ev = LifeEvent.query.filter_by(id=event_id, user_id=current_user.id).first()
+    if not ev:
+        abort(404)
+    db.session.delete(ev)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# add personal notes
 def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
     d = Dream.query.filter_by(id=dream_id, user_id=user_id).first()
     if not d:
@@ -971,18 +1035,6 @@ def _parse_iso_dt(value: str) -> datetime:
         raise ValueError("Invalid occurred_at; use YYYY-MM-DD or ISO 8601")
 
 
-# def _events_for_prompt(user_id: int, days: int = 90, cap: int = 5) -> list[str]:
-#     """Auto-include a few recent life events; no UI flags, no IDs."""
-#     rows = (LifeEvent.query
-#             .filter(
-#                 LifeEvent.user_id == user_id,
-#                 LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=90)
-#             )
-#             .order_by(LifeEvent.occurred_at.desc())
-#             .limit(cap)
-#             .all())
-#     return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
-
 def _events_for_prompt(user_id: int, days: int | None = None, cap: int = 5) -> list[str]:
     """
     Fetch up to `cap` most recent life events.
@@ -994,11 +1046,18 @@ def _events_for_prompt(user_id: int, days: int | None = None, cap: int = 5) -> l
     if days is not None:
         q = q.filter(LifeEvent.occurred_at >= datetime.utcnow() - timedelta(days=days))
     rows = q.limit(cap).all()
-    return [f"{r.occurred_at.date()}: {r.details}" for r in rows]
-    # return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
+    # return [f"{r.occurred_at.date()}: {r.details}" for r in rows]
+    return [f"{r.occurred_at.date()}: {r.title}" for r in rows]
+
 
 def _build_user_payload(dream_prompt: str, user_id: int, dream_text: str) -> str:
-    """Add a small Context block (if any events) before the Dream text."""
+    try:
+        u = User.query.get(user_id)   # your User model
+        intro = intro_line_for_prompt(u, include_gender=True, include_timezone=True) if u else None
+    except Exception:
+        logger.warning("user fetch/intro build failed", exc_info=True)
+        intro = None
+
     try:
         ctx_items = _events_for_prompt(user_id)
     except Exception:
@@ -1006,10 +1065,13 @@ def _build_user_payload(dream_prompt: str, user_id: int, dream_text: str) -> str
         ctx_items = []
 
     parts = [dream_prompt]
+    if intro:
+        parts.append("User:\n- " + intro)
     if ctx_items:
         parts.append("Context:\n" + "\n".join(f"- {x}" for x in ctx_items))
     parts.append("Dream:\n" + dream_text.strip())
     return "\n\n".join(parts)
+
 
 def _strip_trailing_type_block(text: str) -> str:
     if not text:
@@ -1019,6 +1081,7 @@ def _strip_trailing_type_block(text: str) -> str:
     if "Type:" in text:
         return text.rsplit("Type:", 1)[0].rstrip()
     return text
+
 
 # dream analysis
 @app.route("/api/chat", methods=["POST"])
@@ -1142,12 +1205,9 @@ def chat():
             return jsonify({
                 "dream_id": dream.id,
                 "analysis": dream.analysis,
-                # "summary": dream.summary,
                 "tone": dream.tone,
                 "is_question": False,
                 "should_generate_image": False,
-                # "image_url": dream.image_file,
-                # "stored": True
             }), 200
 
         
@@ -1162,12 +1222,9 @@ def chat():
             return jsonify({
                 "dream_id": dream.id,
                 "analysis": dream.analysis,
-                # "summary": dream.summary,
                 "tone": dream.tone,
                 "is_question": True,                # <-- give the client a real flag
                 "should_generate_image": False,     # <-- authoritative “don’t start”
-                # "image_url": dream.image_file,
-                # "stored": True
             }), 200
         
         # Dream → keep + image
@@ -1183,12 +1240,9 @@ def chat():
         return jsonify({
             "dream_id": dream.id,
             "analysis": dream.analysis,
-            # "summary": dream.summary,
             "tone": dream.tone,
             "is_question": False,
             "should_generate_image": True,          # <-- authoritative “start”
-            # "image_url": dream.image_file,
-            # "stored": True
         }), 200
       
     except Exception as e:
