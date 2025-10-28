@@ -38,18 +38,19 @@ import traceback
 import uuid
 
 
-log_file_path = "dreamr.log"
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-# Clear any existing handlers
-logger.handlers = []
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
-file_handler = logging.FileHandler(log_file_path)
-file_handler.setFormatter(formatter)
-stream_handler = logging.StreamHandler()  # stdout (journalctl/systemd)
-stream_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
+logger.setLevel(logging.INFO)
+
+if os.getenv("LOG_TO_STDOUT", "1") == "1":
+    handler = logging.StreamHandler()
+else:
+    log_dir = os.getenv("LOG_DIR", "/tmp")
+    os.makedirs(log_dir, exist_ok=True)
+    handler = logging.FileHandler(os.path.join(log_dir, "dreamr.log"))
+
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logger.addHandler(handler)
+
 
 client = OpenAI()
 openai.api_key = os.environ.get("OPENAI_API_KEY")
