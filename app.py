@@ -44,7 +44,7 @@ logger.setLevel(logging.INFO)
 if os.getenv("LOG_TO_STDOUT", "1") == "1":
     handler = logging.StreamHandler()
 else:
-    log_dir = os.getenv("LOG_DIR", "/tmp")
+    log_dir = os.getenv("LOG_DIR", "/home/mk7193/dreamr")
     os.makedirs(log_dir, exist_ok=True)
     handler = logging.FileHandler(os.path.join(log_dir, "dreamr.log"))
 
@@ -56,9 +56,15 @@ client = OpenAI()
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
-app.config.from_pyfile('config.py')
-# CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "https://dreamr-us-west-01.zentha.me", "http://localhost:5173"])
-CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "http://localhost:5173"])
+# app.config.from_pyfile('config.py')
+cfg_path = os.getenv("FLASK_CONFIG_FILE", "config.py")
+if os.path.exists(cfg_path):
+    app.config.from_pyfile(cfg_path)
+
+# env overrides (Flask 3)
+app.config.from_prefixed_env(prefix="DREAMR")
+
+CORS(app, supports_credentials=True,origins=["https://dreamr.zentha.me", "https://dreamr-us-west-01.zentha.me", "http://localhost:5173"])
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
