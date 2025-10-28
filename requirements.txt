@@ -28,4 +28,4 @@ bcrypt~=4.1
 
 # Server
 gunicorn~=21.2
-
+PyMySQL~=1.1
