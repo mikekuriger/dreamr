@@ -1679,7 +1679,7 @@ def chat():
             "analysis": dream.analysis,
             "tone": dream.tone,
             "is_question": False,
-            "should_generate_image": True,          # <-- authoritative “start”
+            "should_generate_image": is_pro,          # <-- authoritative “start”
         }), 200
       
     except Exception as e:
@@ -1851,11 +1851,18 @@ def generate_resized_image(input_path, output_path, size=(48, 48)):
 @app.post("/api/image_generate")
 @login_required
 def generate_dream_image():
+    is_pro = _user_is_pro(current_user.id)
+
+    if is_pro == False:
+        return jsonify({
+            "skipped": True,
+        }), 200
+    
+    q = "high" if is_pro else "low"
+    
     logger.info(" /api/image_generate called")
     data = request.get_json()
     dream_id = data.get("dream_id")
-    is_pro = _user_is_pro(current_user.id)
-    q = "high" if is_pro else "low"
 
     # 1) Input guard
     if not dream_id:
@@ -1940,7 +1947,7 @@ def generate_dream_image():
 
         logger.info("Returning image response to frontend")
         return jsonify({
-            "analysis": dream.analysis,
+            # "analysis": dream.analysis,
             "image": f"/static/images/dreams/{dream.image_file}"
         })
 
