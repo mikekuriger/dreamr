@@ -1255,7 +1255,7 @@ def call_openai_with_retry(prompt, retries=3, delay=2):
                 raise
 
               
-def convert_dream_to_image_prompt(message, tone=None, quality="low"):
+def convert_dream_to_image_prompt(message, tone=None, quality="high"):
     if quality == "low":
         base_prompt = CATEGORY_PROMPTS["image_free"]
     else:
@@ -1265,7 +1265,9 @@ def convert_dream_to_image_prompt(message, tone=None, quality="low"):
     logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
     logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
 
-    style = TONE_TO_STYLE.get(tone, "Artistic vivid style")
+    style = TONE_TO_STYLE.get(tone, "Photo Realistic")
+    # style = "Steampunk"
+    # style = "Photo Realistic"
     # style = "Artistic vivid style"
     # style = "Watercolor fantasy"
     # style = "Concept art"
@@ -1882,14 +1884,14 @@ def generate_dream_image():
         logger.info("Sending image generation request...")
 
         # Supported values are: 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-0721-mini-alpha', 'dall-e-2', and 'dall-e-3'
-        model = "dall-e-2" if q == "low" else "dall-e-3"
-        size  = "512x512"  if q == "low" else "1024x1024"
+        # model = "dall-e-2" if q == "low" else "dall-e-3"
+        # size  = "512x512"  if q == "low" else "1024x1024"
             
         image_response = client.images.generate(
-            model=model,
+            model="dall-e-3",
             prompt=image_prompt,
             n=1,
-            size=size,
+            size="1024x1024",
             response_format="url"
         )
         image_url = image_response.data[0].url
@@ -1907,7 +1909,7 @@ def generate_dream_image():
         with open(image_path, "wb") as f:
             f.write(img_response.content)
         logger.info(f"Image saved to {image_path}")
-
+        
         # image_response = client.images.generate(
         #     model="gpt-image-1",
         #     prompt=image_prompt,
@@ -1927,7 +1929,7 @@ def generate_dream_image():
         #     f.write(img_bytes)
         # logger.info(f"Image saved to {image_path}")
 
-        generate_resized_image(image_path, tile_path, size=(256, 256))
+        # generate_resized_image(image_path, tile_path, size=(256, 256))
 
         # Update DB
         # dream.image_url = image_url

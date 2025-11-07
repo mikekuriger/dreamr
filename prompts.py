@@ -50,21 +50,118 @@ Format your response as follows, and make sure the words Analysis, Summary, Tone
     "image": """Rewrite the following dream description into a vivid, detailed visual prompt suitable for AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 2000 characters.""",
 
 
+    "image_free": """Convert the following dream description into a concise, concrete visual scene for DALL-E 2.
+Describe what is visible: setting, lighting, colors, key objects, and mood. 
+Use calm, poetic imagery rather than story or dialogue. 
+Avoid abstract ideas, violence, or banned terms. 
+Translate emotions into atmosphere, weather, color tone, or symbolic elements. 
+Limit to 4–6 clear visual subjects, one main focal point, and under 900 characters.""",
+
     
-    "image_free": """Rewrite the following dream description into a detailed visual prompt suitable for AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 950 characters."""
+    "xxximage_free": """Rewrite the following dream description into a detailed visual prompt suitable for simple dall-e-2 AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 900 characters."""
 }
 
 TONE_TO_STYLE = {
     "Peaceful / gentle": "Artistic vivid style",
     "Epic / heroic": "Concept art",
     "Whimsical / surreal": "Artistic vivid style",
-    "Nightmarish / dark": "Dark fairytale",
+    # "Nightmarish / dark": "Dark fairytale",
+    "Nightmarish / dark": "Photo realistic, dark nightmare",
     # "Romantic / nostalgic": "Impressionist art",
     "Romantic / nostalgic": "Artistic vivid style",
     "Ancient / mythic": "Mythological fantasy",
     "Futuristic / uncanny": "Cyberdream / retrofuturism",
     "Elegant / ornate": "Artistic vivid style"
 }
+
+# image styles:
+# * Photographic
+# Cinematic film still
+# Portrait photography, shallow depth of field
+# Long-exposure night
+# Volumetric light / god rays
+# Macro photography
+# Infrared photography
+# Tilt-shift miniature
+# Polaroid / instant film
+# Black-and-white high contrast
+# Duotone photo
+
+# * Painterly / Fine art
+# Baroque chiaroscuro
+# Renaissance fresco
+# Dutch Golden Age
+# Romanticism landscape
+# Pre-Raphaelite
+# Fauvism bold color
+# Cubism
+# Surrealism (Dalí-like)
+# Expressionism
+# Color field painting
+
+# * Illustration / Graphic
+# Flat vector poster
+# Minimalist line art
+# Editorial illustration
+# Ukiyo-e woodblock
+# Ink wash (sumi-e)
+
+# * Etching / engraving
+# Stained glass window
+# Paper cutout collage
+# Screen-print halftone
+# Vintage travel poster
+
+# * Fantasy / Sci-fi
+# Dieselpunk
+# Steampunk
+# Solarpunk
+# Bioluminescent alien flora
+# Cosmic horror
+# Dreamcore / liminal spaces
+# Vaporwave / synthwave
+# Analog horror VHS
+# Mythic epic tableau
+
+# * 3D / CGI
+# Octane render
+# Unreal Engine cinematic
+# Clay render (untextured)
+
+# * Low-poly 3D
+# Isometric voxel art
+# Photogrammetry look
+# Traditional media
+# Charcoal sketch
+# Pastel chalk
+# Gouache poster paint
+# Tempera on gesso
+# Encaustic wax
+# Pointillism
+
+# * Design / Pattern
+# Escher tessellation
+# Sacred geometry
+# Art Deco
+# Bauhaus poster
+# Memphis design
+# Mondrian grid
+
+# * Abstract / Experimental
+# Glitch art
+# Data moshing aesthetic
+# Kaleidoscope symmetry
+# Double exposure
+# Light painting
+# Bokeh abstraction
+
+# * Atmosphere / Mood tags
+# Golden hour
+# Moonlit blue hour
+# Misty fog
+# High-key airy
+# Low-key moody
+# Backlit silhouette
 
 #     "dream": """You are a professional dream analyst and interpreter of subconscious symbolism.
 # Your goal is to offer insight into the emotional and psychological meaning of dreams in a clear, authentic, and human tone.
