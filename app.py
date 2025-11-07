@@ -14,10 +14,12 @@ from google.auth.transport import requests as google_requests
 from langdetect import detect
 from openai import OpenAI
 from PIL import Image
+from PIL import ImageFilter
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
+from sqlalchemy import text
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
@@ -210,6 +212,8 @@ class User(db.Model, UserMixin):
     language = db.Column(db.String(10), nullable=True, default='en')
     avatar_filename = db.Column(db.String(200), nullable=True)
     enable_audio = db.Column(db.Boolean, default=False)
+    subscriptions = db.relationship("UserSubscription", back_populates="user")
+    payments = db.relationship("PaymentTransaction", back_populates="user")
 
 class PendingUser(db.Model):
     __tablename__ = 'pendingusers'
@@ -276,9 +280,6 @@ class LifeEvent(db.Model):
     def __repr__(self):
         return f"<LifeEvent id={self.id} user_id={self.user_id} title={self.title!r}>"
 
-
-
-
 class PasswordResetToken(db.Model):
     __tablename__ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
@@ -291,12 +292,417 @@ class PasswordResetToken(db.Model):
     user_agent = db.Column(db.String(256))
     user = db.relationship('User')
 
+# models/subscriptions.py
+# --- Subscription plans ---
+class SubscriptionPlan(db.Model):
+    __tablename__ = "subscription_plans"
 
+    id = db.Column(db.String(50), primary_key=True)  # e.g., "pro_monthly"
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    period = db.Column(db.String(20), nullable=False)  # 'monthly', 'yearly'
+    features = db.Column(MySQLJSON)
+    product_id = db.Column(db.String(100))
+
+    created_at = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        server_onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+    user_subscriptions = db.relationship("UserSubscription", back_populates="plan")
+
+# --- User subscriptions ---
+class UserSubscription(db.Model):
+    __tablename__ = "user_subscriptions"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    plan_id = db.Column(db.String(50), db.ForeignKey("subscription_plans.id"), nullable=False, index=True)
+
+    status = db.Column(db.String(20), nullable=False)  # active/canceled/expired
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime)
+
+    auto_renew = db.Column(db.Boolean, server_default=text("0"), nullable=False)
+    payment_method = db.Column(db.String(50))
+    payment_provider = db.Column(db.String(50))
+    provider_subscription_id = db.Column(db.String(100), index=True)
+    provider_transaction_id = db.Column(db.String(100), index=True)
+    receipt_data = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        server_onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+    user = db.relationship("User", back_populates="subscriptions")
+    plan = db.relationship("SubscriptionPlan", back_populates="user_subscriptions")
+    payments = db.relationship("PaymentTransaction", back_populates="subscription")
+
+# --- Payment transactions ---
+class PaymentTransaction(db.Model):
+    __tablename__ = "payment_transactions"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey("user_subscriptions.id"), index=True)
+
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    currency = db.Column(db.String(3), server_default=text("'USD'"), nullable=False)
+
+    status = db.Column(db.String(20), nullable=False)   # pending/completed/failed
+    provider = db.Column(db.String(50), nullable=False) # apple/google/stripe
+    provider_transaction_id = db.Column(db.String(100), index=True)
+
+    provider_response = db.Column(MySQLJSON)
+    created_at = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+
+    user = db.relationship("User", back_populates="payments")
+    subscription = db.relationship("UserSubscription", back_populates="payments")
+
+# --- Subscription Service ---
+class SubscriptionService:
+    @staticmethod
+    def get_user_subscription_status(user_id):
+        """Get the current subscription status for a user"""
+        # Find the most recent active subscription
+        subscription = UserSubscription.query.filter_by(
+            user_id=user_id, 
+            status='active'
+        ).order_by(UserSubscription.end_date.desc()).first()
+        
+        if not subscription:
+            # Return default free tier if no active subscription
+            return {
+                'tier': 'free',
+                'expiry_date': None,
+                'is_active': False,
+                'auto_renew': False,
+                'payment_method': None
+            }
+        
+        # Get the plan details
+        plan = subscription.plan
+        
+        return {
+            'tier': plan.id,
+            'expiry_date': subscription.end_date.isoformat() if subscription.end_date else None,
+            'is_active': subscription.status == 'active',
+            'auto_renew': subscription.auto_renew,
+            'payment_method': subscription.payment_method
+        }
+    
+    @staticmethod
+    def get_subscription_plans():
+        """Get all available subscription plans"""
+        plans = SubscriptionPlan.query.all()
+        return [{
+            'id': plan.id,
+            'name': plan.name,
+            'description': plan.description,
+            'price': float(plan.price),
+            'period': plan.period,
+            'features': plan.features,
+            'product_id': plan.product_id
+        } for plan in plans]
+    
+    @staticmethod
+    def initiate_subscription(user_id, plan_id, payment_provider=None, receipt_data=None):
+        """
+        Initiate a subscription purchase
+        
+        Args:
+            user_id: The user ID
+            plan_id: The subscription plan ID
+            payment_provider: The payment provider (apple/google/stripe)
+            receipt_data: Receipt data for app store purchases
+            
+        Returns:
+            Dictionary with subscription details or payment URL
+        """
+        plan = SubscriptionPlan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan {plan_id} not found")
+        
+        # Handle different payment providers
+        if payment_provider in ('apple', 'google'):
+            # Verify receipt with app store/google play
+            if not receipt_data:
+                raise ValueError("Receipt data required for app store/google play purchases")
+            
+            # Verify receipt (implementation depends on provider)
+            if payment_provider == 'apple':
+                verification_result = SubscriptionService._verify_apple_receipt(receipt_data)
+            else:  # google
+                verification_result = SubscriptionService._verify_google_receipt(receipt_data)
+            
+            if not verification_result.get('valid'):
+                raise ValueError(f"Invalid receipt: {verification_result.get('message')}")
+            
+            # Create subscription record
+            subscription = SubscriptionService._create_subscription(
+                user_id=user_id,
+                plan_id=plan_id,
+                payment_provider=payment_provider,
+                provider_subscription_id=verification_result.get('subscription_id'),
+                provider_transaction_id=verification_result.get('transaction_id'),
+                receipt_data=receipt_data,
+                auto_renew=True
+            )
+            
+            # Create payment record
+            SubscriptionService._create_payment(
+                user_id=user_id,
+                subscription_id=subscription.id,
+                amount=float(plan.price),
+                provider=payment_provider,
+                provider_transaction_id=verification_result.get('transaction_id'),
+                provider_response=verification_result
+            )
+            
+            return {'success': True}
+        
+        elif payment_provider == 'stripe':
+            # For web payments, create a Stripe checkout session
+            # This is a placeholder - you would integrate with Stripe API here
+            payment_url = f"https://example.com/checkout?plan={plan_id}&user={user_id}"
+            return {'payment_url': payment_url}
+        
+        else:
+            # Default web payment flow (customize based on your payment processor)
+            payment_url = f"https://example.com/checkout?plan={plan_id}&user={user_id}"
+            return {'payment_url': payment_url}
+    
+    @staticmethod
+    def cancel_subscription(user_id):
+        """Cancel a user's subscription"""
+        subscription = UserSubscription.query.filter_by(
+            user_id=user_id, 
+            status='active'
+        ).order_by(UserSubscription.end_date.desc()).first()
+        
+        if not subscription:
+            return False
+        
+        # Update subscription status
+        subscription.status = 'canceled'
+        subscription.auto_renew = False
+        db.session.commit()
+        
+        # If using a payment provider, you might need to cancel with them too
+        if subscription.payment_provider in ('apple', 'google', 'stripe'):
+            # This would be implemented based on the provider's API
+            pass
+        
+        return True
+    
+    @staticmethod
+    def update_payment_method(user_id, payment_details):
+        """Update a user's payment method"""
+        subscription = UserSubscription.query.filter_by(
+            user_id=user_id, 
+            status='active'
+        ).order_by(UserSubscription.end_date.desc()).first()
+        
+        if not subscription:
+            return False
+        
+        # Update payment method
+        subscription.payment_method = payment_details.get('method')
+        db.session.commit()
+        
+        # If using a payment provider, you might need to update with them too
+        if subscription.payment_provider in ('apple', 'google', 'stripe'):
+            # This would be implemented based on the provider's API
+            pass
+        
+        return True
+    
+    @staticmethod
+    def _create_subscription(user_id, plan_id, payment_provider=None, 
+                            provider_subscription_id=None, provider_transaction_id=None,
+                            receipt_data=None, auto_renew=False):
+        """Create a subscription record"""
+        plan = SubscriptionPlan.query.get(plan_id)
+        
+        # Calculate end date based on period
+        start_date = datetime.utcnow()
+        if plan.period == 'monthly':
+            end_date = start_date + relativedelta(months=1)
+        elif plan.period == 'yearly':
+            end_date = start_date + relativedelta(years=1)
+        else:
+            # Default to 30 days if period is unknown
+            end_date = start_date + timedelta(days=30)
+        
+        subscription = UserSubscription(
+            user_id=user_id,
+            plan_id=plan_id,
+            status='active',
+            start_date=start_date,
+            end_date=end_date,
+            auto_renew=auto_renew,
+            payment_method=payment_provider,
+            payment_provider=payment_provider,
+            provider_subscription_id=provider_subscription_id,
+            provider_transaction_id=provider_transaction_id,
+            receipt_data=receipt_data
+        )
+        
+        db.session.add(subscription)
+        db.session.commit()
+        return subscription
+    
+    @staticmethod
+    def _create_payment(user_id, subscription_id, amount, provider, 
+                       provider_transaction_id=None, provider_response=None):
+        """Create a payment record"""
+        payment = PaymentTransaction(
+            user_id=user_id,
+            subscription_id=subscription_id,
+            amount=amount,
+            status='completed',
+            provider=provider,
+            provider_transaction_id=provider_transaction_id,
+            provider_response=provider_response
+        )
+        
+        db.session.add(payment)
+        db.session.commit()
+        return payment
+    
+    @staticmethod
+    def _verify_apple_receipt(receipt_data):
+        """
+        Verify an Apple App Store receipt
+        1. Send the receipt to Apple's verification endpoint
+        2. Parse the response
+        3. Validate the subscription details
+        """
+        verify_url = "https://buy.itunes.apple.com/verifyReceipt"  # Use sandbox URL for testing
+        response = requests.post(verify_url, json={"receipt-data": receipt_data})
+        result = response.json()
+        # Validate the response and extract subscription details
+        if result.get("status") == 0:  # 0 = valid receipt
+            # Extract subscription ID, transaction ID, expiry date, etc.
+            return {
+                'valid': True,
+                'subscription_id': result.get("latest_receipt_info")[0].get("original_transaction_id"),
+                'transaction_id': result.get("latest_receipt_info")[0].get("transaction_id"),
+                # 'expiry_date': # Convert timestamp to ISO date
+            }
+        else:
+            return {'valid': False, 'message': f"Invalid receipt: {result.get('status')}"}
+
+    
+    @staticmethod
+    def _verify_google_receipt(receipt_data):
+        """
+        Verify a Google Play receipt
+        
+        This is a placeholder. In a real implementation, you would:
+        1. Verify the purchase token with Google's API
+        2. Parse the response
+        3. Validate the subscription details
+        """
+        # Placeholder implementation
+        return {
+            'valid': True,
+            'subscription_id': f"google_{uuid.uuid4()}",
+            'transaction_id': f"google_txn_{uuid.uuid4()}",
+            'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
+        }
+
+    def _create_stripe_checkout_session(user_id, plan_id):
+        """
+        Create a Stripe checkout session for a subscription
+        """
+        plan = SubscriptionPlan.query.get(plan_id)
+        # Create a Stripe checkout session
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': plan.name,
+                        'description': plan.description,
+                    },
+                    'unit_amount': int(float(plan.price) * 100),  # Stripe uses cents
+                    'recurring': {
+                        'interval': 'month' if plan.period == 'monthly' else 'year',
+                    },
+                },
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f"https://your-app.com/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"https://your-app.com/subscription/cancel",
+            client_reference_id=str(user_id),
+            metadata={
+                'user_id': user_id,
+                'plan_id': plan_id,
+            },
+        )
+        return session.url
+
+    def process_subscription_renewals():
+        """
+        Process subscription renewals and expirations
+        """
+        # Get all active subscriptions that are due for renewal
+        subscriptions = UserSubscription.query.filter(
+            UserSubscription.status == 'active',
+            UserSubscription.end_date <= datetime.utcnow() + timedelta(days=1),
+            UserSubscription.auto_renew == True
+        ).all()
+        for subscription in subscriptions:
+            # Process renewal based on payment provider
+            if subscription.payment_provider == 'apple':
+                # Verify subscription status with Apple
+                pass
+            elif subscription.payment_provider == 'google':
+                # Verify subscription status with Google
+                pass
+            elif subscription.payment_provider == 'stripe':
+                # Process renewal with Stripe
+                pass
+
+
+    
 # Notes
 NOTES_MAX_LEN = 8000
 NOTES_AI_ENABLED = False
 REANALYZE_WITH_NOTES_ALLOWED = False
 NOTES_POLICY_VERSION = "v1"
+
+# pro
+def _user_is_pro(user_id: int) -> bool:
+    try:
+        st = SubscriptionService.get_user_subscription_status(user_id)
+        tier = (st.get("tier") or "").lower()
+        active = st.get("is_active") is True
+        return active and (tier.startswith("pro") or tier.startswith("trial"))
+    except Exception:
+        return False
+
+from functools import wraps
+from flask import jsonify
+
+def requires_pro(fn):
+    @wraps(fn)
+    def _wrap(*args, **kwargs):
+        if not current_user.is_authenticated or not _user_is_pro(current_user.id):
+            return jsonify({"error": "pro_required"}), 402
+        return fn(*args, **kwargs)
+    return _wrap
 
 def _iso_utc(dt: datetime | None) -> str | None:
     if not dt:
@@ -851,7 +1257,7 @@ def call_openai_with_retry(prompt, retries=3, delay=2):
               
 def convert_dream_to_image_prompt(message, tone=None, quality="low"):
     if quality == "low":
-        base_prompt = CATEGORY_PROMPTS["lq_image"]
+        base_prompt = CATEGORY_PROMPTS["image_free"]
     else:
         base_prompt = CATEGORY_PROMPTS["image"]
   
@@ -929,6 +1335,7 @@ def _life_event_to_dict(ev: LifeEvent):
 
 @api.route("/api/life_events", methods=["GET"])
 @login_required
+@requires_pro
 def list_life_events():
     # ?limit=50 (default), newest first
     try:
@@ -940,6 +1347,7 @@ def list_life_events():
 
 @api.route("/api/life_events", methods=["POST"])
 @login_required
+@requires_pro
 def create_life_event():
     data = request.get_json(force=True, silent=False) or {}
     title = (data.get("title") or "").strip()
@@ -969,6 +1377,7 @@ def create_life_event():
 
 @api.route("/api/life_events/<int:event_id>", methods=["PATCH"])
 @login_required
+@requires_pro
 def update_life_event(event_id: int):
     ev = LifeEvent.query.filter_by(id=event_id, user_id=current_user.id).first()
     if not ev:
@@ -1019,6 +1428,22 @@ def update_dream_notes(dream_id: int, user_id: int, notes: str | None):
     d.set_notes(notes)
     db.session.commit()
     return d
+
+
+# Generate blurry images for free gallery (decided to blur images from app side so as to keep the high res images in the back end)
+# def generate_blurred_tile(input_path, output_path, size=(256,256)):
+#     with Image.open(input_path) as img:
+#         img.thumbnail(size)
+#         img = img.filter(ImageFilter.GaussianBlur(radius=6))
+#         os.makedirs(os.path.dirname(output_path), exist_ok=True)
+#         img.save(output_path, "PNG")
+
+# # inside /api/image_generate after saving the main file:
+# tile_path = os.path.join("static","images","tiles", filename)
+# blur_path = os.path.join("static","images","tiles_blur", filename)
+# generate_resized_image(image_path, tile_path, size=(256,256))
+# generate_blurred_tile(image_path, blur_path, size=(256,256))
+
 
 
 # --- NEW: helpers ------------------------------------------------------------
@@ -1116,9 +1541,12 @@ def chat():
         logger.debug(f"Dream saved with ID: {dream.id}")
 
         # 2) Build prompt (adds recent life events if any)
-        dream_prompt = CATEGORY_PROMPTS["dream"]
+        is_pro = _user_is_pro(current_user.id)
+        q = "pro" if is_pro else "simple"
+        # dream_prompt = CATEGORY_PROMPTS["dream"]
+        dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
-        logger.info("Sending prompt to OpenAI")
+        logger.info(f"Sending {q} prompt to OpenAI")
         logger.debug(f"Dream Analysis Prompt: {prompt}")
 
         response = call_openai_with_retry(prompt)
@@ -1424,7 +1852,8 @@ def generate_dream_image():
     logger.info(" /api/image_generate called")
     data = request.get_json()
     dream_id = data.get("dream_id")
-    quality="high"
+    is_pro = _user_is_pro(current_user.id)
+    q = "high" if is_pro else "low"
 
     # 1) Input guard
     if not dream_id:
@@ -1448,10 +1877,8 @@ def generate_dream_image():
     tone = dream.tone
 
     try:
-        logger.info("Converting dream to image prompt...")
-        q = (quality or "low").lower()
+        logger.info(f"Converting dream to {q} quality image prompt...")
         image_prompt = convert_dream_to_image_prompt(message, tone, q)
-        # logger.debug(f"Image prompt: {image_prompt}")
         logger.info("Sending image generation request...")
 
         # Supported values are: 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-0721-mini-alpha', 'dall-e-2', and 'dall-e-3'
@@ -1830,6 +2257,124 @@ def check_auth():
     return jsonify({"authenticated": False}), 401
 
 
+
+
+# --- Subscription API Endpoints ---
+@app.route("/api/subscription/status", methods=["GET"])
+@login_required
+def get_subscription_status():
+    """Get the current subscription status for the logged-in user"""
+    try:
+        status = SubscriptionService.get_user_subscription_status(current_user.id)
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error fetching subscription status: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch subscription status"}), 500
+
+@app.route("/api/subscription/plans", methods=["GET"])
+@login_required
+def get_subscription_plans():
+    """Get all available subscription plans"""
+    try:
+        plans = SubscriptionService.get_subscription_plans()
+        return jsonify(plans)
+    except Exception as e:
+        logger.error(f"Error fetching subscription plans: {e}", exc_info=True)
+        return jsonify({"error": "Failed to fetch subscription plans"}), 500
+
+@app.route("/api/subscription/purchase", methods=["POST"])
+@login_required
+def purchase_subscription():
+    """Initiate a subscription purchase"""
+    data = request.get_json(silent=True) or {}
+    plan_id = data.get("plan_id")
+    
+    if not plan_id:
+        return jsonify({"error": "plan_id is required"}), 400
+    
+    # Check if the plan exists
+    plan = SubscriptionPlan.query.get(plan_id)
+    if not plan:
+        return jsonify({"error": f"Plan {plan_id} not found"}), 404
+    
+    try:
+        # Determine payment provider
+        payment_provider = data.get("payment_provider")
+        receipt_data = data.get("receipt_data")
+        
+        # Initiate subscription
+        result = SubscriptionService.initiate_subscription(
+            user_id=current_user.id,
+            plan_id=plan_id,
+            payment_provider=payment_provider,
+            receipt_data=receipt_data
+        )
+        
+        return jsonify(result)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error initiating subscription: {e}", exc_info=True)
+        return jsonify({"error": "Failed to initiate subscription"}), 500
+
+@app.route("/api/subscription/cancel", methods=["POST"])
+@login_required
+def cancel_subscription():
+    """Cancel the current subscription"""
+    try:
+        success = SubscriptionService.cancel_subscription(current_user.id)
+        return jsonify({"success": success})
+    except Exception as e:
+        logger.error(f"Error canceling subscription: {e}", exc_info=True)
+        return jsonify({"error": "Failed to cancel subscription"}), 500
+
+@app.route("/api/subscription/payment-method", methods=["POST"])
+@login_required
+def update_payment_method():
+    """Update the payment method for the current subscription"""
+    data = request.get_json(silent=True) or {}
+    
+    try:
+        success = SubscriptionService.update_payment_method(current_user.id, data)
+        return jsonify({"success": success})
+    except Exception as e:
+        logger.error(f"Error updating payment method: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update payment method"}), 500
+
+# --- Optional: Webhook Handlers for App Store and Google Play ---
+@app.route("/api/webhooks/apple-iap", methods=["POST"])
+def apple_iap_webhook():
+    """
+    Handle Apple App Store Server Notifications
+    
+    This endpoint receives server-to-server notifications from Apple
+    about subscription events (renewals, cancellations, etc.)
+    """
+    data = request.get_json(silent=True) or {}
+    logger.info(f"Received Apple IAP webhook: {data}")
+    
+    # Process the notification (implementation depends on your business logic)
+    # ...
+    
+    return jsonify({"status": "received"}), 200
+
+@app.route("/api/webhooks/google-play", methods=["POST"])
+def google_play_webhook():
+    """
+    Handle Google Play Developer API Notifications
+    
+    This endpoint receives server-to-server notifications from Google
+    about subscription events (renewals, cancellations, etc.)
+    """
+    data = request.get_json(silent=True) or {}
+    logger.info(f"Received Google Play webhook: {data}")
+    
+    # Process the notification (implementation depends on your business logic)
+    # ...
+    
+    return jsonify({"status": "received"}), 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 
