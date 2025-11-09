@@ -16,6 +16,9 @@ from openai import OpenAI
 from PIL import Image
 from PIL import ImageFilter
 from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
+from quota import ensure_week_current, next_reset_iso, get_or_create_credits
+from quota import decrement_text_or_deny, refund_text
+from quota import decrement_image_or_deny, refund_image
 from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
@@ -367,6 +370,23 @@ class PaymentTransaction(db.Model):
     user = db.relationship("User", back_populates="payments")
     subscription = db.relationship("UserSubscription", back_populates="payments")
 
+# --- For free users ---
+class UserCredits(db.Model):
+    __tablename__ = "user_credits"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+    text_remaining_week = db.Column(db.Integer, nullable=False, default=2)
+    image_remaining_lifetime = db.Column(db.Integer, nullable=False, default=3)
+    week_anchor_utc = db.Column(db.DateTime, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        server_default=text("CURRENT_TIMESTAMP"),
+        server_onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+
+    user = db.relationship("User", backref=db.backref("credits", uselist=False))
+
 # --- Subscription Service ---
 class SubscriptionService:
     @staticmethod
@@ -380,12 +400,18 @@ class SubscriptionService:
         
         if not subscription:
             # Return default free tier if no active subscription
+            from quota import ensure_week_current, next_reset_iso  # safe import here
+            uc = ensure_week_current(user_id)
+            
             return {
                 'tier': 'free',
                 'expiry_date': None,
                 'is_active': False,
                 'auto_renew': False,
-                'payment_method': None
+                'payment_method': None,
+                'text_remaining_week': uc.text_remaining_week,
+                'image_remaining_lifetime': uc.image_remaining_lifetime,
+                'next_reset_iso': next_reset_iso(user_id)
             }
         
         # Get the plan details
@@ -690,6 +716,19 @@ def _user_is_pro(user_id: int) -> bool:
         tier = (st.get("tier") or "").lower()
         active = st.get("is_active") is True
         return active and (tier.startswith("pro") or tier.startswith("trial"))
+    except Exception:
+        return False
+
+# Checks if user can generate images (pro or has free credits)
+def _can_generate_image(user_id: int) -> bool:
+    # Check if pro user
+    if _user_is_pro(user_id):
+        return True
+    
+    # Check if free user with remaining image credits
+    try:
+        credits = get_or_create_credits(user_id)
+        return credits.image_remaining_lifetime > 0
     except Exception:
         return False
 
@@ -1530,7 +1569,18 @@ def chat():
         logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
 
+    # Check if user is using a free plan, and update counts
+    decremented_text = False
+    is_pro = _user_is_pro(current_user.id)
+    
+
     try:
+        if not is_pro:
+            ok, reset_iso = decrement_text_or_deny(current_user.id)
+            if not ok:
+                return jsonify({"error": "quota_exhausted", "kind": "text", "next_reset_iso": reset_iso}), 402
+            decremented_text = True
+
         # 1) Save bare dream
         logger.info("Saving dream to database...")
         dream = Dream(
@@ -1541,11 +1591,10 @@ def chat():
         db.session.add(dream)
         db.session.commit()
         logger.debug(f"Dream saved with ID: {dream.id}")
-
-        # 2) Build prompt (adds recent life events if any)
-        is_pro = _user_is_pro(current_user.id)
+        
         q = "pro" if is_pro else "simple"
-        # dream_prompt = CATEGORY_PROMPTS["dream"]
+        
+        # 2) Build prompt (adds recent life events if any)
         dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
         logger.info(f"Sending {q} prompt to OpenAI")
@@ -1679,13 +1728,15 @@ def chat():
             "analysis": dream.analysis,
             "tone": dream.tone,
             "is_question": False,
-            "should_generate_image": is_pro,          # <-- authoritative “start”
+            "should_generate_image": _can_generate_image(current_user.id),          # <-- check if user is "pro", or "free + has credits"
         }), 200
       
     except Exception as e:
-      db.session.rollback()
-      logger.error("Exception during dream processing", exc_info=True)
-      return jsonify({"error": "internal error"}), 500
+        db.session.rollback()
+        if decremented_text and not is_pro:
+            refund_text(current_user.id)
+        logger.error("Exception during dream processing", exc_info=True)
+        return jsonify({"error": "internal error"}), 500
 
 
 # Create a life event
@@ -1853,12 +1904,17 @@ def generate_resized_image(input_path, output_path, size=(48, 48)):
 def generate_dream_image():
     is_pro = _user_is_pro(current_user.id)
 
-    if is_pro == False:
-        return jsonify({
-            "skipped": True,
-        }), 200
-    
-    q = "high" if is_pro else "low"
+    # Free user: gate before any work
+    decremented_image = False
+    if not is_pro:
+        ok = decrement_image_or_deny(current_user.id)
+        if not ok:
+            return jsonify({"error": "quota_exhausted", "kind": "image"}), 402
+        decremented_image = True
+
+    # was unable to get usable images from "low" quality engine, so skipping completely.
+    # q = "high" if is_pro else "low" 
+    q = "high"
     
     logger.info(" /api/image_generate called")
     data = request.get_json()
@@ -1936,10 +1992,9 @@ def generate_dream_image():
         #     f.write(img_bytes)
         # logger.info(f"Image saved to {image_path}")
 
-        # generate_resized_image(image_path, tile_path, size=(256, 256))
+        generate_resized_image(image_path, tile_path, size=(256, 256))
 
         # Update DB
-        # dream.image_url = image_url
         dream.image_file = filename
         dream.image_prompt = image_prompt
         db.session.commit()
@@ -1953,14 +2008,20 @@ def generate_dream_image():
 
     except openai.OpenAIError as e:
         db.session.rollback()
+        if decremented_image:
+            refund_image(current_user.id)
         logger.error("...", exc_info=True)
         return jsonify({"error": "OpenAI image generation failed"}), 502
     except requests.RequestException as e:
         db.session.rollback()
+        if decremented_image:
+            refund_image(current_user.id)
         logger.error("...", exc_info=True)
         return jsonify({"error": "Failed to fetch image"}), 504
     except Exception:
         db.session.rollback()
+        if decremented_image:
+            refund_image(current_user.id)
         logger.exception("Unexpected error during image generation")
         return jsonify({"error": "Image generation failed"}), 500
 
@@ -2275,6 +2336,18 @@ def get_subscription_status():
     """Get the current subscription status for the logged-in user"""
     try:
         status = SubscriptionService.get_user_subscription_status(current_user.id)
+
+        # If not subscribed, attach counters
+        tier = (status.get("tier") or "").lower()
+        if status.get("is_active") and (tier.startswith("pro") or tier.startswith("trial")):
+            return jsonify(status)
+        
+        uc = ensure_week_current(current_user.id)
+        status.update({
+            "text_remaining_week": uc.text_remaining_week,
+            "image_remaining_lifetime": uc.image_remaining_lifetime,
+            "next_reset_iso": next_reset_iso(current_user.id),
+        })
         return jsonify(status)
     except Exception as e:
         logger.error(f"Error fetching subscription status: {e}", exc_info=True)
