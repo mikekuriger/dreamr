@@ -82,6 +82,9 @@ IOS_CLIENT_ID = "846080686597-8u85pj943ilkmlt583f3tct5h9ca0c3t.apps.googleuserco
 ALLOWED_AUDS = {WEB_CLIENT_ID, IOS_CLIENT_ID}
 ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
 
+# --- Admin config ---
+# ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+app.config.setdefault("ADMIN_EMAILS", os.getenv("ADMIN_EMAILS", ""))
 
 
 # Password reset with token (when user clicks the email)
@@ -808,6 +811,34 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# --- Admin helpers ---
+# def is_admin_user():
+#     return current_user.is_authenticated and (current_user.email or "").lower() in ADMIN_EMAILS
+
+def _get_admin_emails():
+    cfg = (current_app.config.get("ADMIN_EMAILS")
+           or os.getenv("ADMIN_EMAILS")
+           or "")
+    # allow comma or semicolon
+    parts = cfg.replace(";", ",").split(",")
+    return {p.strip().lower() for p in parts if p.strip()}
+
+def is_admin_user():
+    return current_user.is_authenticated and (current_user.email or "").lower() in _get_admin_emails()
+    
+
+def admin_required(fn):
+    from functools import wraps
+    @wraps(fn)
+    @login_required
+    def _wrap(*a, **k):
+        if not is_admin_user():
+            abort(403)
+        return fn(*a, **k)
+    return _wrap
+
 
 
 # ROUTES
@@ -2322,7 +2353,8 @@ def check_auth():
         return jsonify({
             "authenticated": True,
             "first_name": current_user.first_name,
-            "enable_audio": current_user.enable_audio
+            "enable_audio": current_user.enable_audio,
+            # "email": current_user.email
         })
     return jsonify({"authenticated": False}), 401
 
@@ -2456,7 +2488,552 @@ def google_play_webhook():
     
     return jsonify({"status": "received"}), 200
 
+
+# =========================
+# Admin blueprint (HTML)
+# =========================
+# admin_bp = Blueprint("admin", __name__, url_prefix="/admin") breaks app
+
+# Minimal inline templates to avoid files
+ADMIN_SHELL = """<!doctype html><meta charset="utf-8">
+<title>{{ title or 'Admin' }}</title>
+<style>
+  /* page width */
+  :root { --page-width: 1400px; }               /* make larger if you want */
+  html,body{height:100%;margin:0;padding:0}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;color:#151515;background:#fff}
+  .wrap{width:min(96vw, var(--page-width)); margin:20px auto; padding:0 8px;}
+
+  a{color:#0a58ca;text-decoration:none}
+  .msg{padding:6px 10px;border-radius:8px;background:#eef;display:inline-block}
+  nav a{margin-right:12px}
+  hr{border:0;border-top:1px solid #ddd;margin:12px 0}
+
+  table{border-collapse:collapse;width:100%;margin:10px 0; table-layout:auto}
+  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
+  th{background:#f4f4f4}
+</style>
+
+<div class="wrap">
+  <h1>Dreamr Admin</h1>
+  <nav>
+    <a href="/admin/">Dashboard</a>
+    <a href="/admin/users">Users</a>
+    <a href="/admin/logout" onclick="event.preventDefault();document.getElementById('al').submit()">Logout</a>
+  </nav>
+  <hr>
+  {{ body|safe }}
+  <form id="al" method="post" action="/admin/logout"></form>
+</div>
+"""
+
+
+def _render_admin(body_tpl: str, title: str, **ctx):
+    body = render_template_string(body_tpl, **ctx)
+    return render_template_string(ADMIN_SHELL, title=title, body=body)
+
+# --- Admin login form (HTML) reusing your User + bcrypt + Flask-Login ---
+# ----- Admin HTML login -----
+@app.get("/admin/login")
+def admin_login_form():
+    if current_user.is_authenticated and is_admin_user():
+        return redirect("/admin/")
+    return """
+    <form method='post' action='/admin/login' style='max-width:340px;margin:60px auto;font-family:system-ui'>
+      <h3>Admin login</h3>
+      <input name='email' placeholder='Email' style='width:100%;padding:8px;margin:6px 0'>
+      <input name='password' type='password' placeholder='Password' style='width:100%;padding:8px;margin:6px 0'>
+      <button type='submit' style='padding:8px 12px'>Sign in</button>
+      <p style='font-size:12px;color:#666'>Email must match ADMIN_EMAILS</p>
+    </form>
+    """
+
+@app.post("/admin/login")
+def admin_login_submit():
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    u = User.query.filter_by(email=email).first()
+    if not u or not u.password:
+        return "Invalid credentials", 401
+    ok = False
+    try:
+        ok = bcrypt.checkpw(password.encode("utf-8"), u.password.encode("utf-8"))
+    except Exception:
+        ok = False
+    if not ok:
+        return "Invalid credentials", 401
+    login_user(u, remember=True, duration=timedelta(days=90))
+    return redirect("/admin/")
+
+@app.post("/admin/logout")
+@login_required
+def admin_logout():
+    logout_user()
+    return redirect("/admin/login")
+
+# ----- Admin pages -----
+@app.get("/admin/")
+@admin_required
+def admin_dashboard():
+    total_users = db.session.query(func.count(User.id)).scalar()
+    total_dreams = db.session.query(func.count(Dream.id)).scalar()
+    active_subs = (db.session.query(func.count(UserSubscription.id))
+                   .filter(UserSubscription.status.in_(["active","trial"])).scalar())
+    pending = db.session.query(func.count(PendingUser.uuid)).scalar()
+    recent_payments = (db.session.query(PaymentTransaction)
+                       .order_by(desc(PaymentTransaction.created_at)).limit(10).all())
+    BODY = """
+    <h2>Dashboard</h2>
+    <div class="msg">Total users: <b>{{ total_users }}</b></div>
+    <div class="msg">Total dreams: <b>{{ total_dreams }}</b></div>
+    <div class="msg">Active/trial subs: <b>{{ active_subs }}</b></div>
+    <div class="msg">Pending signups: <b>{{ pending }}</b></div>
+    <h3>Recent payments</h3>
+    <table>
+      <tr><th>ID</th><th>User</th><th>Amount</th><th>Status</th><th>Provider</th><th>When</th></tr>
+      {% for p in recent_payments %}
+      <tr>
+        <td>{{ p.id }}</td>
+        <td><a href="{{ url_for('admin_user_detail', user_id=p.user_id) }}">#{{ p.user_id }}</a></td>
+        <td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+        <td>{{ p.status }}</td>
+        <td>{{ p.provider }}</td>
+        <td>{{ p.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    """
+    return _render_admin(BODY, "Dashboard",
+                         total_users=total_users, total_dreams=total_dreams,
+                         active_subs=active_subs, pending=pending,
+                         recent_payments=recent_payments)
+
+@app.get("/admin/users")
+@admin_required
+def admin_users_list():
+    try: page = max(1, int(request.args.get("page", 1)))
+    except: page = 1
+    try: per_page = min(200, max(1, int(request.args.get("per_page", 50))))
+    except: per_page = 50
+    q = (request.args.get("q") or "").strip()
+    sort = request.args.get("sort", "-signup")
+
+    qry = User.query
+    if q:
+        like = f"%{q}%"
+        qry = qry.filter(or_(User.email.ilike(like), User.first_name.ilike(like)))
+
+    if sort == "email":
+        qry = qry.order_by(User.email.asc())
+    elif sort == "name":
+        qry = qry.order_by(User.first_name.asc(), User.email.asc())
+    else:
+        qry = qry.order_by(User.signup_date.is_(None), User.signup_date.desc())
+
+    rows = qry.limit(per_page + 1).offset((page - 1) * per_page).all()
+    has_more = len(rows) > per_page
+    users = rows[:per_page]
+
+    subq = (db.session.query(UserSubscription.user_id,
+                             func.max(UserSubscription.created_at).label("mx"))
+            .group_by(UserSubscription.user_id).subquery())
+    latest_subs = {
+        s.user_id: s for s in db.session.query(UserSubscription)
+        .join(subq, (UserSubscription.user_id == subq.c.user_id) & (UserSubscription.created_at == subq.c.mx))
+        .all()
+    }
+    credits_map = {c.user_id: c for c in UserCredits.query.filter(UserCredits.user_id.in_([u.id for u in users])).all()}
+
+    BODY = """
+    <h2>Users</h2>
+    <form method="get">
+      <input name="q" value="{{ q or '' }}" placeholder="search email or name">
+      <select name="sort">
+        <option value="-signup" {% if sort=='-signup' %}selected{% endif %}>Newest</option>
+        <option value="email" {% if sort=='email' %}selected{% endif %}>Email</option>
+        <option value="name" {% if sort=='name' %}selected{% endif %}>Name</option>
+      </select>
+      <button type="submit">Search</button>
+    </form>
+    <table>
+      <tr><th>ID</th><th>Email</th><th>Name</th><th>Signup</th><th>Plan</th><th>Status</th><th>Text/wk</th><th>Images</th></tr>
+      {% for u in users %}
+        {% set s = latest_subs.get(u.id) %}
+        {% set c = credits_map.get(u.id) %}
+        <tr>
+          <td><a href="{{ url_for('admin_user_detail', user_id=u.id) }}">{{ u.id }}</a></td>
+          <td>{{ u.email }}</td>
+          <td>{{ u.first_name or '' }}</td>
+          <td>{{ u.signup_date or '' }}</td>
+          <td>{{ s.plan_id if s else '' }}</td>
+          <td>{{ s.status if s else '' }}</td>
+          <td>{{ c.text_remaining_week if c else 0 }}</td>
+          <td>{{ c.image_remaining_lifetime if c else 0 }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+    <div>
+      {% if page>1 %}<a href="?page={{ page-1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">Prev</a>{% endif %}
+      <span>Page {{ page }}</span>
+      {% if has_more %}<a href="?page={{ page+1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">Next</a>{% endif %}
+    </div>
+    """
+    return _render_admin(BODY, "Users",
+                         users=users, latest_subs=latest_subs, credits_map=credits_map,
+                         page=page, per_page=per_page, q=q, sort=sort, has_more=has_more)
+
+@app.get("/admin/users/<int:user_id>")
+@admin_required
+def admin_user_detail(user_id: int):
+    u = User.query.get_or_404(user_id)
+    subs = (UserSubscription.query.filter_by(user_id=u.id)
+            .order_by(UserSubscription.created_at.desc()).all())
+    credits = UserCredits.query.get(u.id)
+    dreams = (Dream.query.filter_by(user_id=u.id)
+              .order_by(Dream.created_at.desc()).limit(50).all())
+    payments = (PaymentTransaction.query.filter_by(user_id=u.id)
+                .order_by(PaymentTransaction.created_at.desc()).all())
+    plans = (SubscriptionPlan.query
+         .order_by(SubscriptionPlan.period.asc(), SubscriptionPlan.price.asc())
+         .all())
+    current_sub = (
+        UserSubscription.query
+        .filter(UserSubscription.user_id == u.id,
+                UserSubscription.status.in_(["active", "trial"]))
+        .order_by(
+            UserSubscription.end_date.is_(None),     # non-nulls first
+            UserSubscription.end_date.desc(),
+            UserSubscription.start_date.desc(),
+        )
+        .first()
+    ) or (
+        UserSubscription.query
+        .filter(UserSubscription.user_id == u.id)
+        .order_by(
+            UserSubscription.end_date.is_(None),
+            UserSubscription.end_date.desc(),
+            UserSubscription.start_date.desc(),
+        )
+        .first()
+    )
+    
+    BODY = """
+    <h2>User #{{ u.id }} — {{ u.email }}</h2>
+    <p>Name: {{ u.first_name or '' }} | TZ: {{ u.timezone or '' }} | Lang: {{ u.language or '' }} | Audio: {{ 'on' if u.enable_audio else 'off' }}</p>
+
+    {% if request.args.get('msg') %}
+      <div class="msg">{{ request.args.get('msg') }}</div>
+    {% endif %}
+
+    <h3>Credits</h3>
+    <form method="post" action="/admin/users/{{ u.id }}/credits">
+      <label>Text remaining this week:
+        <input type="number" name="text_remaining_week" value="{{ credits.text_remaining_week if credits else 0 }}" min="0">
+      </label>
+      <label>Images remaining lifetime:
+        <input type="number" name="image_remaining_lifetime" value="{{ credits.image_remaining_lifetime if credits else 0 }}" min="0">
+      </label>
+      <button type="submit">Update credits</button>
+    </form>
+
+    <h3>Subscription</h3>
+
+    {% if not plans %}
+      <div class="msg">No plans found. <a href="/admin/plans">Seed default plans</a>.</div>
+    {% endif %}
+    
+    {% if current_sub %}
+      <div class="msg">
+        Current: <b>{{ current_sub.plan_id }}</b>
+        · status {{ current_sub.status }}
+        · start {{ current_sub.start_date }}
+        · end {{ current_sub.end_date or '—' }}
+        · auto renew {{ 'yes' if current_sub.auto_renew else 'no' }}
+      </div>
+    {% else %}
+      <div class="msg">No subscription on record</div>
+    {% endif %}
+    <h3></h3>
+    <form method="post" action="/admin/users/{{ u.id }}/subscription" class="grid2">
+      <label>Action</label>
+      <select name="action">
+        <option value="create">Create new</option>
+        <option value="update_latest">Update latest</option>
+      </select>
+    
+      <label>Plan</label>
+      <select name="plan_id">
+        {% for p in plans %}
+          <option value="{{ p.id }}"
+            {% if current_sub and p.id == current_sub.plan_id %}selected{% endif %}>
+            {{ p.id }} ({{ p.period }}, ${{ '%.2f'|format(p.price) }})
+          </option>
+        {% endfor %}
+      </select>
+    
+      <label>Status</label>
+      <select name="status">
+        {% for s in ['active','trial','canceled','expired'] %}
+          <option value="{{ s }}"
+            {% if current_sub and s == current_sub.status %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    
+      <label>Auto renew</label>
+      <select name="auto_renew">
+        <option value="0" {% if current_sub and not current_sub.auto_renew %}selected{% endif %}>no</option>
+        <option value="1" {% if current_sub and current_sub.auto_renew %}selected{% endif %}>yes</option>
+      </select>
+    
+      <label>Start (blank = now)</label>
+      <input name="start_date" placeholder="YYYY-MM-DD or ISO"
+             value="{{ current_sub.start_date if current_sub else '' }}">
+    
+      <label>End (blank = auto by plan)</label>
+      <input name="end_date" placeholder="YYYY-MM-DD or ISO"
+             value="{{ current_sub.end_date if current_sub else '' }}">
+    
+      <label>Payment provider</label>
+      <select name="payment_provider">
+        <option></option><option>apple</option><option>google</option><option>stripe</option>
+      </select>
+    
+      <label>Payment method</label>
+      <input name="payment_method" placeholder="card / apple / google">
+    
+      <div></div><button class="btn" type="submit">Save subscription</button>
+    </form>
+
+    <h3>Set password</h3>
+    <form method="post" action="/admin/users/{{ u.id }}/password">
+      <input name="password" type="password" minlength="8" required placeholder="New password">
+      <button type="submit">Set password</button>
+    </form>
+
+    <h3>Dreams (latest 50)</h3>
+    <table>
+      <tr><th>ID</th><th>Created</th><th>Hidden</th><th>Summary</th><th>Text</th><th>Analysis</th><th>Actions</th></tr>
+      {% for d in dreams %}
+        <tr>
+          <td>{{ d.id }}</td>
+          <td>{{ d.created_at }}</td>
+          <td>{{ d.hidden and 'yes' or 'no' }}</td>
+          <td>{{ d.summary or (d.text[:80] ~ ('…' if d.text and d.text|length>80 else '')) }}</td>
+          <td>{{ d.text or (d.text[:80] ~ ('…' if d.text and d.text|length>80 else '')) }}</td>
+          <td>{{ d.analysis }}</td>
+          <td>
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/dreams/{{ d.id }}/toggle-hidden">
+              <button type="submit">{{ d.hidden and 'Unhide' or 'Hide' }}</button>
+            </form>
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/dreams/{{ d.id }}/delete" onsubmit="return confirm('Delete dream {{ d.id }}? This moves images to /static/images/deleted');">
+              <button type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+
+    <h3>Subscriptions (history)</h3>
+    <table>
+      <tr><th>ID</th><th>Plan</th><th>Status</th><th>Start</th><th>End</th><th>Auto</th><th>Provider</th></tr>
+      {% for s in subs %}
+        <tr><td>{{ s.id }}</td><td>{{ s.plan_id }}</td><td>{{ s.status }}</td><td>{{ s.start_date }}</td><td>{{ s.end_date or '' }}</td><td>{{ 'yes' if s.auto_renew else 'no' }}</td><td>{{ s.payment_provider or '' }}</td></tr>
+      {% endfor %}
+    </table>
+
+    <h3>Payments</h3>
+    <table>
+      <tr><th>ID</th><th>Amount</th><th>Status</th><th>Provider</th><th>Txn</th><th>When</th></tr>
+      {% for p in payments %}
+        <tr><td>{{ p.id }}</td><td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td><td>{{ p.status }}</td><td>{{ p.provider }}</td><td>{{ p.provider_transaction_id or '' }}</td><td>{{ p.created_at }}</td></tr>
+      {% endfor %}
+    </table>
+    """
+    return _render_admin(BODY, f"User {u.id}",
+                         u=u, subs=subs, credits=credits, dreams=dreams, payments=payments, plans=plans, current_sub=current_sub)
+
+# Optional: debug
+@app.get("/admin/debug")
+def admin_debug():
+    emails = list(_get_admin_emails())
+    return {
+        "is_authenticated": current_user.is_authenticated,
+        "email": (current_user.email or None) if current_user.is_authenticated else None,
+        "ADMIN_EMAILS": emails,
+        "match": current_user.is_authenticated and (current_user.email or "").lower() in emails,
+    }, 200
+
+
+# --- Helpers ---
+def _parse_iso_optional(s: str | None):
+    if not s:
+        return None
+    v = s.strip()
+    if not v:
+        return None
+    try:
+        if len(v) == 10:
+            return datetime.strptime(v, "%Y-%m-%d")
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        raise ValueError("Invalid date; use YYYY-MM-DD or ISO 8601")
+
+def _admin_redirect(user_id: int, msg: str = ""):
+    msg_q = f"?msg={requests.utils.quote(msg)}" if msg else ""
+    return redirect(f"/admin/users/{user_id}{msg_q}")
+
+# --- Update credits ---
+@app.post("/admin/users/<int:user_id>/credits")
+@admin_required
+def admin_update_credits(user_id: int):
+    u = User.query.get_or_404(user_id)
+    try:
+        tw = int(request.form.get("text_remaining_week", "0"))
+        iw = int(request.form.get("image_remaining_lifetime", "0"))
+        if tw < 0 or iw < 0:
+            return _admin_redirect(user_id, "Credits must be >= 0")
+        uc = UserCredits.query.get(user_id)
+        if not uc:
+            # week_anchor_utc required; set to start of current week in UTC
+            now = datetime.utcnow()
+            week_anchor = now - timedelta(days=now.weekday())  # Monday
+            uc = UserCredits(user_id=user_id, week_anchor_utc=week_anchor, text_remaining_week=tw, image_remaining_lifetime=iw)
+            db.session.add(uc)
+        else:
+            uc.text_remaining_week = tw
+            uc.image_remaining_lifetime = iw
+        db.session.commit()
+        return _admin_redirect(user_id, "Credits updated")
+    except Exception:
+        db.session.rollback()
+        return _admin_redirect(user_id, "Failed to update credits")
+
+# --- Create or update subscription ---
+@app.post("/admin/users/<int:user_id>/subscription")
+@admin_required
+def admin_update_subscription(user_id: int):
+    u = User.query.get_or_404(user_id)
+    action = (request.form.get("action") or "create").strip()
+    plan_id = (request.form.get("plan_id") or "").strip()
+    status = (request.form.get("status") or "active").strip()
+    auto_renew = (request.form.get("auto_renew") or "0").strip() in ("1", "true", "yes")
+    payment_provider = (request.form.get("payment_provider") or "").strip() or None
+    payment_method = (request.form.get("payment_method") or "").strip() or None
+    start_date = request.form.get("start_date") or ""
+    end_date = request.form.get("end_date") or ""
+
+    plan = SubscriptionPlan.query.get(plan_id) if plan_id else None
+    if not plan:
+        return _admin_redirect(user_id, "Invalid plan")
+
+    try:
+        sd = _parse_iso_optional(start_date) or datetime.utcnow()
+        ed = _parse_iso_optional(end_date)
+        if not ed:
+            # compute by plan.period
+            if (plan.period or "").lower().startswith("month"):
+                ed = sd + relativedelta(months=1)
+            elif (plan.period or "").lower().startswith("year"):
+                ed = sd + relativedelta(years=1)
+            else:
+                ed = sd + timedelta(days=30)
+
+        if action == "update_latest":
+            latest = (UserSubscription.query
+                      .filter_by(user_id=user_id)
+                      .order_by(UserSubscription.created_at.desc()).first())
+            if not latest:
+                return _admin_redirect(user_id, "No subscription to update")
+            latest.plan_id = plan_id
+            latest.status = status
+            latest.start_date = sd
+            latest.end_date = ed
+            latest.auto_renew = auto_renew
+            latest.payment_provider = payment_provider
+            latest.payment_method = payment_method
+            db.session.commit()
+            return _admin_redirect(user_id, "Subscription updated")
+        else:
+            sub = UserSubscription(
+                user_id=user_id,
+                plan_id=plan_id,
+                status=status,
+                start_date=sd,
+                end_date=ed,
+                auto_renew=auto_renew,
+                payment_provider=payment_provider,
+                payment_method=payment_method
+            )
+            db.session.add(sub)
+            db.session.commit()
+            return _admin_redirect(user_id, "Subscription created")
+    except ValueError as ve:
+        db.session.rollback()
+        return _admin_redirect(user_id, str(ve))
+    except Exception:
+        db.session.rollback()
+        return _admin_redirect(user_id, "Failed to save subscription")
+
+# --- Toggle dream hidden ---
+@app.post("/admin/users/<int:user_id>/dreams/<int:dream_id>/toggle-hidden")
+@admin_required
+def admin_toggle_dream_hidden(user_id: int, dream_id: int):
+    d = Dream.query.get_or_404(dream_id)
+    if d.user_id != user_id:
+        return _admin_redirect(user_id, "Dream does not belong to user")
+    try:
+        d.hidden = not bool(d.hidden)
+        db.session.commit()
+        return _admin_redirect(user_id, f"Dream {dream_id} {'hidden' if d.hidden else 'unhidden'}")
+    except Exception:
+        db.session.rollback()
+        return _admin_redirect(user_id, "Failed to toggle")
+
+# --- Delete dream (with image archival) ---
+@app.post("/admin/users/<int:user_id>/dreams/<int:dream_id>/delete")
+@admin_required
+def admin_delete_dream(user_id: int, dream_id: int):
+    d = Dream.query.get_or_404(dream_id)
+    if d.user_id != user_id:
+        return _admin_redirect(user_id, "Dream does not belong to user")
+    try:
+        if d.image_file:
+            try:
+                image_path = os.path.join("static", "images", "dreams", d.image_file)
+                tile_path = os.path.join("static", "images", "tiles", d.image_file)
+                archive_dir = os.path.join("static", "images", "deleted")
+                os.makedirs(archive_dir, exist_ok=True)
+                for path in [image_path, tile_path]:
+                    if os.path.exists(path):
+                        shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+            except Exception:
+                pass
+        db.session.delete(d)
+        db.session.commit()
+        return _admin_redirect(user_id, f"Dream {dream_id} deleted")
+    except Exception:
+        db.session.rollback()
+        return _admin_redirect(user_id, "Failed to delete dream")
+
+# --- Set user password ---
+@app.post("/admin/users/<int:user_id>/password")
+@admin_required
+def admin_set_password(user_id: int):
+    u = User.query.get_or_404(user_id)
+    pw = request.form.get("password") or ""
+    if len(pw) < 8:
+        return _admin_redirect(user_id, "Password must be at least 8 chars")
+    try:
+        u.password = bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        db.session.commit()
+        return _admin_redirect(user_id, "Password updated")
+    except Exception:
+        db.session.rollback()
+        return _admin_redirect(user_id, "Failed to update password")
+
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
 
