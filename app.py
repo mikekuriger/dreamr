@@ -82,6 +82,21 @@ IOS_CLIENT_ID = "846080686597-8u85pj943ilkmlt583f3tct5h9ca0c3t.apps.googleuserco
 ALLOWED_AUDS = {WEB_CLIENT_ID, IOS_CLIENT_ID}
 ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
 
+
+# apple store
+@app.post("/appstore/notifications")
+def appstore_notifications():
+    data = request.get_json(force=True, silent=True)
+    # For v2, payload is usually in data["signedPayload"] (string JWS)
+    # TODO: verify JWS using Apple JWKS, then decode claims
+    # TODO: handle notificationType/subtype and update your DB
+    return jsonify({"status": "ok"}), 200
+
+@app.post("/appstore/notifications-sandbox")
+def appstore_notifications_sbx():
+    return jsonify({"status": "ok"}), 200
+
+
 # --- Admin config ---
 # ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
 app.config.setdefault("ADMIN_EMAILS", os.getenv("ADMIN_EMAILS", ""))
@@ -873,8 +888,8 @@ def profile():
 
     if 'email' in data:
         user.email = data['email']
-    if 'firstName' in data:
-        user.first_name = data['firstName']
+    if 'first_name' in data:
+        user.first_name = data['first_name']
     if 'birthdate' in data:
         try:
             user.birthdate = datetime.strptime(data['birthdate'], '%Y-%m-%d').date()
