@@ -522,7 +522,7 @@ Rect _originFromKey(GlobalKey key) {
             padding: const EdgeInsets.symmetric(vertical: 3), // space between cards
             child: Container(
               width: double.infinity, // full width
-              padding: const EdgeInsets.all(8), // inner padding inside the white box
+              padding: const EdgeInsets.all(3), // inner padding inside the card
               decoration: BoxDecoration(
                 color: toneStyle.background,
                 borderRadius: BorderRadius.circular(8),
@@ -550,14 +550,6 @@ Rect _originFromKey(GlobalKey key) {
                             fit: BoxFit.cover,
                             radius: BorderRadius.circular(4),
                           ),
-                        // if (dream.imageTile != null && dream.imageTile!.isNotEmpty)
-                        //   netImageWithFallback(
-                        //     dream.imageTile,
-                        //     width: 48,
-                        //     height: 48,
-                        //     fit: BoxFit.cover,
-                        //     radius: BorderRadius.circular(4),
-                        //   ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Column(
@@ -571,14 +563,6 @@ Rect _originFromKey(GlobalKey key) {
                                 dream.summary,
                                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,color: toneStyle.text,),
                               ),
-                              Text(
-                                dream.tone,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontStyle: FontStyle.italic,
-                                  color: toneStyle.text,
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -587,7 +571,7 @@ Rect _originFromKey(GlobalKey key) {
                   ),
 // Expanded content
                   AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
+                    duration: const Duration(milliseconds: 400),
                     curve: Curves.easeInOut,
                     child: isExpanded
                         ? Column(
@@ -621,10 +605,27 @@ Rect _originFromKey(GlobalKey key) {
                                 ],
                               ),
 
-                              // Dream Text Header
-                              Text(
-                                "My Dream:",
-                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: toneStyle.text),
+                             // Dream Text Header
+                              Row(
+                                children: [
+                                  Text(
+                                    "My Dream:",
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: toneStyle.text,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    dream.tone,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontStyle: FontStyle.italic,
+                                      color: toneStyle.text,
+                                    ),
+                                  ),
+                                ],
                               ),
 
                               // Dream Text
@@ -645,23 +646,6 @@ Rect _originFromKey(GlobalKey key) {
                                   fit: BoxFit.cover, 
                                   radius: BorderRadius.circular(8), 
                                 ),
-
-                              // Share
-                                  // ElevatedButton.icon(
-                                  //   onPressed: () => _shareDreamImage(dream),
-                                  //   icon: const Icon(Icons.share, size: 16),
-                                  //   label: const Text('Share Image'),
-                                  //   style: ElevatedButton.styleFrom(
-                                  //     backgroundColor: const Color.fromARGB(255, 75, 3, 143),
-                                  //     foregroundColor: Colors.white,
-                                  //     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  //     minimumSize: const Size(0, 0),
-                                  //     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  //     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                  //     textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                  //     elevation: 0,
-                                  //   ),
-                                  // ),
 
                               // Gradient Divider
                               Container(
