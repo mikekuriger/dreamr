@@ -40,7 +40,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
   // Calendar state
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  CalendarFormat _calendarFormat = CalendarFormat.month;
+  final CalendarFormat _calendarFormat = CalendarFormat.month;
   bool _showCalendar = false; // Collapsed by default
   Map<DateTime, List<Dream>> _dreamsByDate = {};
   
@@ -235,7 +235,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
       'peaceful / gentle': Colors.blue.shade100,
       'epic / heroic': Colors.orange.shade100,
       'whimsical / surreal': Colors.purple.shade100,
-      'nightmarish / dark': Colors.orange.shade200, // Using text color since background is dark
+      'nightmarish / dark': Colors.orange.shade200,
       'romantic / nostalgic': Colors.pink.shade100,
       'ancient / mythic': Colors.brown.shade100,
       'futuristic / uncanny': Colors.teal.shade100,
@@ -858,6 +858,18 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                 ],
               ),
             ),
+
+ // Divider
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4), // 8px above + 8px below
+              child: Divider(
+                color: Colors.yellow.withValues(alpha: 0.75),
+                thickness: 1,
+                indent: 16,
+                endIndent: 16,
+              ),
+            ),
+
 
             // Dream list with filtered dreams
             Builder(
