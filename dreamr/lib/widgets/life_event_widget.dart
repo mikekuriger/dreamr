@@ -187,7 +187,18 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    if (_events.isEmpty) return const Text("Your Life Events will appear here...");
+    // if (_events.isEmpty) return const Text("Your Life Events will appear here...");
+    if (_events.isEmpty) {
+      return const Center(
+        child: Text(
+          "Your Life Events will appear here...",
+          style: TextStyle(
+            color: Colors.white70,   // or Colors.white
+            fontSize: 14,
+          ),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 0),
@@ -208,7 +219,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Colors.indigo.shade600,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Column(
@@ -229,7 +240,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
                             children: [
                               Text(
                                 formattedDate,
-                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                style: const TextStyle(fontSize: 12, color: Colors.white70),
                               ),
                               Text(
                                 event.title,
@@ -259,7 +270,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
                         ),
                         Icon(
                           isExpanded ? Icons.expand_less : Icons.expand_more,
-                          color: Colors.grey,
+                          color: Colors.white,
                         ),
                       ],
                     ),
@@ -286,7 +297,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
                                   style: TextStyle(
                                     fontSize: 14, 
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.black87,
+                                    color: Colors.white54,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -294,7 +305,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
                                   event.details!,
                                   style: const TextStyle(
                                     fontSize: 14,
-                                    color: Colors.black87,
+                                    color: Colors.black,
                                   ),
                                 ),
                                 const SizedBox(height: 16),
