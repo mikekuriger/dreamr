@@ -97,12 +97,8 @@ class PurchaseService {
         applicationUserName: null,
       );
 
-      // Start the purchase flow
-      if (Platform.isIOS) {
-        await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-      } else {
-        await _inAppPurchase.buyConsumable(purchaseParam: purchaseParam);
-      }
+      // Start the purchase flow (subscriptions are non-consumable on both platforms)
+      await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
       
       return true;
     } catch (e) {
@@ -165,7 +161,15 @@ class PurchaseService {
       
       if (receipt != null && productId != null) {
         // Send to backend for verification
-        await ApiService.initiateSubscription(productId);
+        final provider = Platform.isIOS
+            ? 'apple'
+            : (Platform.isAndroid ? 'google' : null);
+
+        await ApiService.initiateSubscription(
+          productId,
+          paymentProvider: provider,
+          receiptData: receipt,
+        );
       }
     } catch (e) {
       _error = 'Failed to verify purchase: $e';

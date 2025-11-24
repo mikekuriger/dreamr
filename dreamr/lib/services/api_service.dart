@@ -220,11 +220,21 @@ class ApiService {
   }
 
   // Initiate a subscription purchase
-  // This would typically return information needed to complete the purchase
-  // such as a payment URL or transaction ID
-  static Future<Map<String, dynamic>> initiateSubscription(String planId) async {
-    final res = await DioClient.dio.post('/api/subscription/purchase',
-      data: {'plan_id': planId},
+  // For app store / play store, we also send provider + receipt to the backend.
+  static Future<Map<String, dynamic>> initiateSubscription(
+    String planId, {
+    String? paymentProvider,
+    String? receiptData,
+  }) async {
+    final payload = <String, dynamic>{
+      'plan_id': planId,
+      if (paymentProvider != null) 'payment_provider': paymentProvider,
+      if (receiptData != null) 'receipt_data': receiptData,
+    };
+
+    final res = await DioClient.dio.post(
+      '/api/subscription/purchase',
+      data: payload,
       options: Options(validateStatus: (status) => status == 200),
     );
     return Map<String, dynamic>.from(res.data);

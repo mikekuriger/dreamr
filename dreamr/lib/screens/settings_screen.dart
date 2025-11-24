@@ -260,7 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (_enableNotifications) ...[
                   ListTile(
                     title: const Text(
-                      "Morning Reminder Time",
+                      "Daily Reminder Time",
                       style: TextStyle(color: Colors.white),
                     ),
                     subtitle: Text(
@@ -276,7 +276,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           return Theme(
                             data: ThemeData.dark().copyWith(
                               colorScheme: const ColorScheme.dark(
-                                primary: Colors.deepPurple,
+                                primary: Color.fromARGB(255, 133, 104, 249),
+                                // primary: Colors.deepPurple,
                                 surface: Colors.black87,
                               ),
                             ),
@@ -339,74 +340,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           
           // Test Notifications card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: AppColors.purple950,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.notifications_active, color: Colors.white, size: 24),
-                    SizedBox(width: 8),
-                    Text(
-                      'Test Notifications',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Send test notification immediately.',
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                // Only the Daily test button remains
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurpleAccent,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.today),
-                    label: const Text('Send Daily Test Now'),
-                    onPressed: () async {
-                      try {
-                        await _notificationService.sendDailyTestNow();
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('✅ Sent daily test notification')),
-                        );
-                      } catch (e) {
-                        debugPrint('❌ Failed to send daily test: $e');
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('❌ Failed to send daily test notification')),
-                        );
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Container(
+          //   width: double.infinity,
+          //   padding: const EdgeInsets.all(16),
+          //   margin: const EdgeInsets.only(bottom: 20),
+          //   decoration: BoxDecoration(
+          //     color: AppColors.purple950,
+          //     borderRadius: BorderRadius.circular(16),
+          //     boxShadow: [
+          //       BoxShadow(
+          //         color: Colors.black.withOpacity(0.2),
+          //         blurRadius: 8,
+          //         offset: const Offset(0, 4),
+          //       ),
+          //     ],
+          //   ),
+          //   child: Column(
+          //     crossAxisAlignment: CrossAxisAlignment.start,
+          //     children: [
+          //       const Row(
+          //         children: [
+          //           Icon(Icons.notifications_active, color: Colors.white, size: 24),
+          //           SizedBox(width: 8),
+          //           Text(
+          //             'Test Notifications',
+          //             style: TextStyle(
+          //               color: Colors.white,
+          //               fontSize: 16,
+          //               fontWeight: FontWeight.bold,
+          //             ),
+          //           ),
+          //         ],
+          //       ),
+          //       const SizedBox(height: 12),
+          //       Text(
+          //         'Send test notification immediately.',
+          //         style: const TextStyle(color: Colors.white70, fontSize: 12),
+          //       ),
+          //       const SizedBox(height: 12),
+          //       // Only the Daily test button remains
+          //       SizedBox(
+          //         width: double.infinity,
+          //         child: ElevatedButton.icon(
+          //           style: ElevatedButton.styleFrom(
+          //             backgroundColor: Colors.deepPurpleAccent,
+          //             foregroundColor: Colors.white,
+          //           ),
+          //           icon: const Icon(Icons.today),
+          //           label: const Text('Send Daily Test Now'),
+          //           onPressed: () async {
+          //             try {
+          //               await _notificationService.sendDailyTestNow();
+          //               if (!mounted) return;
+          //               ScaffoldMessenger.of(context).showSnackBar(
+          //                 const SnackBar(content: Text('✅ Sent daily test notification')),
+          //               );
+          //             } catch (e) {
+          //               debugPrint('❌ Failed to send daily test: $e');
+          //               if (!mounted) return;
+          //               ScaffoldMessenger.of(context).showSnackBar(
+          //                 const SnackBar(content: Text('❌ Failed to send daily test notification')),
+          //               );
+          //             }
+          //           },
+          //         ),
+          //       ),
+          //     ],
+          //   ),
+          // ),
         ],
       ),
     );

@@ -194,7 +194,7 @@ class NotificationService {
     ));
 
     // Build personalized body (fallback to generic rotation).
-    final body = await _buildDailyBody(prefs);
+    final msg = await _buildDailyMessage(prefs);
 
     final details = NotificationDetails(
       android: const AndroidNotificationDetails(
@@ -224,13 +224,11 @@ class NotificationService {
     final first = _nextInstance(time);
     await _fln.zonedSchedule(
       _dailyReminderId,
-      "Record last night’s dream",
-      body,
+      msg.title,
+      msg.body,
       first,
       details,
-      androidScheduleMode: Platform.isAndroid
-          ? AndroidScheduleMode.exactAllowWhileIdle
-          : AndroidScheduleMode.inexactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
       payload: 'daily_reminder',
@@ -268,7 +266,7 @@ class NotificationService {
       enableVibration: true,
     ));
 
-    final body = await _buildDailyBody(prefs);
+    final msg = await _buildDailyMessage(prefs);
     final details = NotificationDetails(
       android: const AndroidNotificationDetails(
         dailyChannelId,
@@ -291,8 +289,8 @@ class NotificationService {
 
     await _fln.show(
       9971,
-      "Dreamr✨ Reminder",
-      body,
+      msg.title,
+      msg.body,
       details,
       payload: 'daily_test_now',
     );
@@ -598,11 +596,18 @@ class NotificationService {
     // Deep links if desired
   }
 
-  // Build the daily reminder body: single rotating generic line (no name appended).
-  Future<String> _buildDailyBody(SharedPreferences prefs) async {
-    final generic = NotificationMessages.pickForToday(DateTime.now());
-    return generic;
+  // Build the daily reminder title/body pair for today.
+  Future<NotificationLine> _buildDailyMessage(SharedPreferences prefs) async {
+    // Get cached display name, or fetch from API and cache it.
+    final displayName = await _getOrFetchDisplayName(prefs);
+
+    // Use your deterministic picker + name injection.
+    return NotificationMessages.pickForTodayPersonalized(
+      DateTime.now(),
+      displayName,
+    );
   }
+
 
   /// Get display name from prefs; if missing, fetch from API and cache for personalization.
   Future<String?> _getOrFetchDisplayName(SharedPreferences prefs) async {

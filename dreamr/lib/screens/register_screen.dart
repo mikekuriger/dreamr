@@ -5,6 +5,7 @@ import 'package:dreamr/theme/colors.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:dreamr/constants.dart';
+import 'package:dreamr/widgets/main_scaffold.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -47,7 +48,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       await ApiService.googleLogin(idToken);
       if (!mounted) return; 
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      // After a successful Google "registration", treat it like login and
+      // enter the full app shell (header + nav) via MainScaffold.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),
+      );
     } catch (e) {
       setState(() {
         _errorMessage = "Google login failed";
@@ -120,17 +126,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _passwordController.clear();
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("✅ Check your email to confirm your Dreamr✨ account."),
-            duration: Duration(seconds: 30),
+          SnackBar(
+            content: Text(result),
+            duration: const Duration(seconds: 5),
           ),
         );
 
-  // redirect to login page after a delay. 
-        Future.delayed(Duration(seconds: 5), () {
-          if (!mounted) return;
-          Navigator.pushReplacementNamed(context, '/login');
-        });
+        // User is auto-logged-in by the backend; send them into the full
+        // main scaffold so they get header + hamburger + bottom navigation.
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),
+        );
       }
 
     } catch (e) {

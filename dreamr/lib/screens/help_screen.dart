@@ -161,10 +161,10 @@ class HelpScreen extends StatelessWidget {
               width: double.infinity,
               alignment: Alignment.center,
               child: const Text(
-                'Dreamr ✨ v1.0.1\n© 2025 Zentha Labs',
+                'Dreamr ✨ v1.0.2\n© 2025 Michael Kuriger',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white54,
+                  color: Colors.black26,
                   fontSize: 12,
                 ),
               ),

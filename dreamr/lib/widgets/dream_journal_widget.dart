@@ -239,6 +239,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
 
   final Map<int, bool> _expanded = {};
   bool _loading = true;
+  bool get _anyExpanded => _expanded.values.any((v) => v);
 
   @override
   void initState() {
@@ -258,7 +259,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
         return ToneStyle(Colors.purple.shade100, Colors.black87);
       case 'nightmarish / dark':
         // return ToneStyle(Colors.black, Colors.red.shade500);  // 👈 spooky red
-        return ToneStyle(Colors.grey.shade900, Colors.orange.shade200);  // 👈 spooky orange
+        return ToneStyle(Colors.grey.shade900, Colors.orange.shade500);  // 👈 spooky orange
       case 'romantic / nostalgic':
         return ToneStyle(Colors.pink.shade100, Colors.black87);
       case 'ancient / mythic':
@@ -286,22 +287,6 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     if (t.contains('elegant')) return '••࿐••';           // ornate flower
     return '✨';                                         // default separator
   }
-
-// SHARING
-// Anchor key for share position
-final GlobalKey _shareAnchorKey = GlobalKey();
-
-// Get share origin rect
-Rect _originFromKey(GlobalKey key) {
-  final ctx = key.currentContext;
-  if (ctx == null) return const Rect.fromLTWH(100, 100, 1, 1); // safe fallback
-  final box = ctx.findRenderObject() as RenderBox?;
-  if (box == null || !box.hasSize || box.size.isEmpty) {
-    return const Rect.fromLTWH(100, 100, 1, 1);
-  }
-  final topLeft = box.localToGlobal(Offset.zero);
-  return topLeft & box.size;
-}
 
 // Resolve dream image file for sharing
   Future<File?> _resolveDreamImageFile(Dream d) async {
@@ -343,14 +328,14 @@ Rect _originFromKey(GlobalKey key) {
 
     final shareText = combinedDreamText(d);
     final mime = lookupMimeType(f.path) ?? 'image/jpeg';
-    final origin = _originFromKey(_shareAnchorKey);
+    // final origin = _originFromKey(_shareAnchorKey);
 
     await SharePlus.instance.share(
       ShareParams(
         title: d.summary.isNotEmpty ? d.summary : null,
         text: shareText.isNotEmpty ? shareText : null,
         files: [XFile(f.path, mimeType: mime, name: f.uri.pathSegments.last)],
-        sharePositionOrigin: origin,
+        // sharePositionOrigin: origin,
       ),
     );
   }
@@ -367,13 +352,13 @@ Rect _originFromKey(GlobalKey key) {
       }
 
       final mime = lookupMimeType(f.path) ?? 'image/jpeg';
-      final origin = _originFromKey(_shareAnchorKey);
+      // final origin = _originFromKey(_shareAnchorKey);
 
       await SharePlus.instance.share(
         ShareParams(
           title: d.summary.isNotEmpty ? d.summary : null,
           files: [XFile(f.path, mimeType: mime, name: f.uri.pathSegments.last)],
-          sharePositionOrigin: origin,
+          // sharePositionOrigin: origin,
         ),
       );
     }
@@ -495,305 +480,446 @@ Rect _originFromKey(GlobalKey key) {
     );
   }
 
+  String _sanitizeAnalysis(String raw) {
+    return raw.replaceAll(RegExp(r'\n[-*_]{3,}\s*$'), '');
+  }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    // Use getDreams() to get either filtered dreams or all dreams
     final dreamsToDisplay = getDreams();
-    if (dreamsToDisplay.isEmpty) return const Text("Your Dreams will appear here...");
+    if (dreamsToDisplay.isEmpty) {
+      return const Text("Your Dreams will appear here...");
+    }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0), // remove side gap
-      child: ListView.builder(
-        padding: EdgeInsets.zero, 
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: dreamsToDisplay.length,
-        itemBuilder: (context, index) {
-          final dream = dreamsToDisplay[index];
-          final isExpanded = _expanded[dream.id] ?? false;
-          final toneStyle = _getToneStyle(dream.tone);
+    return PopScope<Object?>(
+      // If any card is expanded, we intercept the back press.
+      canPop: !_anyExpanded,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        // If the route actually popped, do nothing.
+        if (didPop) return;
 
-          final formattedDate = DateFormat('EEE, MMM d, y h:mm a').format(dream.createdAt.toLocal());
+        // We intercepted back: collapse expanded cards instead of leaving.
+        if (_anyExpanded) {
+          setState(() {
+            _expanded.updateAll((key, value) => false);
+          });
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 0), //  side gap
+        child: ListView.builder(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: dreamsToDisplay.length,
+          itemBuilder: (context, index) {
+            final dream = dreamsToDisplay[index];
+            final isExpanded = _expanded[dream.id] ?? false;
+            final toneStyle = _getToneStyle(dream.tone);
+            final formattedDate = DateFormat('EEE, MMM d, y h:mm a')
+                .format(dream.createdAt.toLocal());
 
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3), // space between cards
-            child: Container(
-              width: double.infinity, // full width
-              padding: const EdgeInsets.all(3), // inner padding inside the card
-              decoration: BoxDecoration(
-                color: toneStyle.background,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: toneStyle.text.withValues(alpha: 0.5), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _expanded[dream.id] = !isExpanded;
-                      });
-                    },
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (dream.imageTile != null && dream.imageTile!.isNotEmpty)
-                          localFirstImage(
-                            dreamId: dream.id,
-                            url: dream.imageTile,
-                            kind: DreamImageKind.tile,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            radius: BorderRadius.circular(4),
-                          ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                formattedDate,
-                                style: TextStyle(fontSize: 12,color: toneStyle.text,),
-                              ),
-                              Text(
-                                dream.summary,
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13,color: toneStyle.text,),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3), // space between cards
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.zero, // no global padding
+                decoration: BoxDecoration(
+                  color: toneStyle.background,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: toneStyle.text.withValues(alpha: 0.5),
+                    width: .5,
                   ),
-// Expanded content
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 400),
-                    curve: Curves.easeInOut,
-                    child: isExpanded
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Divider
-                              Row(
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // COLLAPSED ROW (image + title line)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _expanded[dream.id] = !isExpanded;
+                        });
+                      },
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (dream.imageTile != null &&
+                              dream.imageTile!.isNotEmpty)
+                            ClipRRect(
+                              // image hugs the card’s left/top/bottom
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(6),
+                                bottomLeft: Radius.circular(6),
+                                topRight: Radius.circular(6),
+                                bottomRight: Radius.circular(6),
+                              ),
+                              child: localFirstImage(
+                                dreamId: dream.id,
+                                url: dream.imageTile,
+                                kind: DreamImageKind.tile,
+                                width: 52, // tweak as desired
+                                height: 52,
+                                fit: BoxFit.cover,
+                                radius: BorderRadius.zero,
+                              ),
+                            ),
+                          Expanded(
+                            child: Padding(
+                              // padding only around text, not image
+                              padding: const EdgeInsets.all(6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Divider(
-                                      color: toneStyle.text.withValues(alpha: 0.25),
-                                      thickness: 1,
+                                  Text(
+                                    formattedDate,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: toneStyle.text,
                                     ),
                                   ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    child: Text(
-                                      toneSymbol(dream.tone), // 🕷️, 🌸, ☁️, etc.
+                                  Text(
+                                    dream.summary,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                      color: toneStyle.text,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // EXPANDED CONTENT
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: isExpanded
+                          ? Padding(
+                              padding: const EdgeInsets.all(6), // expanded area padding
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Divider row with tone symbol
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Divider(
+                                          color: toneStyle.text
+                                              .withValues(alpha: 0.25),
+                                          thickness: 1,
+                                          indent: 16,
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 8),
+                                        child: Text(
+                                          toneSymbol(dream.tone), // 🕷️, 🌸, ☁️, etc.
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            color: toneStyle.text
+                                                .withValues(alpha: 0.7),
+                                          ),
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Divider(
+                                          color: toneStyle.text
+                                              .withValues(alpha: 0.25),
+                                          thickness: 1,
+                                          endIndent: 16,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  // Dream Text Header
+                                  Row(
+                                    children: [
+                                      Text(
+                                        "My Dream:",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: toneStyle.text,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        dream.tone,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          fontStyle: FontStyle.italic,
+                                          color: toneStyle.text,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  // Dream Text
+                                  if (dream.text.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    SelectableText(
+                                      dream.text,
                                       style: TextStyle(
-                                        fontSize: 20,
-                                        color: toneStyle.text.withValues(alpha: 0.7),
+                                        fontSize: 13,
+                                        fontStyle: FontStyle.italic,
+                                        color: toneStyle.text,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
+
+                                  // Dream Image (full-size)
+                                  if (dream.imageFile != null &&
+                                      dream.imageFile!.isNotEmpty)
+                                    localFirstImage(
+                                      dreamId: dream.id,
+                                      url: dream.imageFile,
+                                      kind: DreamImageKind.file,
+                                      fit: BoxFit.cover,
+                                      radius: BorderRadius.circular(8),
+                                    ),
+
+                                  // Gradient Divider
+                                  Container(
+                                    height: 1,
+                                    margin:
+                                        const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.transparent,
+                                          toneStyle.text
+                                              .withValues(alpha: 0.7),
+                                          Colors.transparent,
+                                        ],
                                       ),
                                     ),
                                   ),
-                                  Expanded(
-                                    child: Divider(
-                                      color: toneStyle.text.withValues(alpha: 0.25),
-                                      thickness: 1,
+
+                                  // Dream Analysis
+                                  if (dream.analysis.isNotEmpty) ...[
+                                    Text(
+                                      "Analysis:",
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: toneStyle.text,
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-
-                             // Dream Text Header
-                              Row(
-                                children: [
-                                  Text(
-                                    "My Dream:",
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: toneStyle.text,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    dream.tone,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontStyle: FontStyle.italic,
-                                      color: toneStyle.text,
-                                    ),
-                                  ),
-                                ],
-                              ),
-
-                              // Dream Text
-                              if (dream.text.isNotEmpty) ...[
-                                SelectableText(
-                                  dream.text,
-                                  style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: toneStyle.text),
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-
-                              // Dream Image
-                                if (dream.imageFile != null && dream.imageFile!.isNotEmpty)
-                                localFirstImage( 
-                                  dreamId: dream.id, 
-                                  url: dream.imageFile, 
-                                  kind: DreamImageKind.file, 
-                                  fit: BoxFit.cover, 
-                                  radius: BorderRadius.circular(8), 
-                                ),
-
-                              // Gradient Divider
-                              Container(
-                                height: 1,
-                                margin: const EdgeInsets.symmetric(vertical: 12),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.transparent,
-                                      toneStyle.text.withValues(alpha: 0.7),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              // Dream Analysis
-                              if (dream.analysis.isNotEmpty) ...[
-                                Text(
-                                  "Analysis:",
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: toneStyle.text),
-                                ),
-                                MarkdownBody(
-                                  data: dream.analysis,
-                                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                                    p: TextStyle(color: toneStyle.text, fontSize: 13),
-                                    strong: TextStyle(color: toneStyle.text, fontWeight: FontWeight.bold),
-                                    em: TextStyle(color: toneStyle.text, fontStyle: FontStyle.italic),
-                                    h1: TextStyle(color: toneStyle.text, fontSize: 18, fontWeight: FontWeight.bold),
-                                    h2: TextStyle(color: toneStyle.text, fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                              ],
-
-                              // Dream Notes
-                              if (dream.notes.isNotEmpty) ...[
-                                Text(
-                                  "Personal Notes:",
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: toneStyle.text),
-                                ),
-                                MarkdownBody(
-                                  data: dream.notes,
-                                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                                    p: TextStyle(color: toneStyle.text, fontSize: 12),
-                                    strong: TextStyle(color: toneStyle.text, fontWeight: FontWeight.bold),
-                                    em: TextStyle(color: toneStyle.text, fontStyle: FontStyle.italic),
-                                    h1: TextStyle(color: toneStyle.text, fontSize: 18, fontWeight: FontWeight.bold),
-                                    h2: TextStyle(color: toneStyle.text, fontSize: 16, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                              ],
-
-                              // Notes Button
-                              Row(
-                                children: [
-                                  // Notes
-                                  ElevatedButton.icon(
-                                    onPressed: () => _openNotesEditor(dream.id),
-                                    icon: const Icon(Icons.edit_note, size: 16),
-                                    label: Text(((dream.notes).trim().isNotEmpty) ? 'Edit notes' : 'Add notes'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color.fromARGB(255, 75, 3, 143),
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                      minimumSize: const Size(0, 0),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                                      elevation: 0,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-
-                                  // Share button with popup menu - fixed implementation
-                                  Material(
-                                    key: _shareAnchorKey,
-                                    color: const Color.fromARGB(255, 75, 3, 143),
-                                    borderRadius: BorderRadius.circular(10),
-                                    elevation: 0,
-                                    child: PopupMenuButton<String>(
-                                      tooltip: 'Share',
-                                      offset: const Offset(0, 30),
-                                      onSelected: (v) {
-                                        if (v == 'with_text') {
-                                          _shareDream(dream);
-                                        } else if (v == 'image_only') {
-                                          _shareDreamImage(dream);
-                                        }
-                                      },
-                                      itemBuilder: (ctx) => const [
-                                        PopupMenuItem(value: 'with_text', child: Text('Share dream + image')),
-                                        PopupMenuItem(value: 'image_only', child: Text('Share image only')),
-                                      ],
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(Icons.share, size: 16, color: Colors.white),
-                                            SizedBox(width: 6),
-                                            Text(
-                                              'Share ✨',
-                                              style: TextStyle(
-                                                fontSize: 13, 
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ],
+                                    const SizedBox(height: 4),
+                                    MarkdownBody(
+                                      // data: dream.analysis,
+                                      data: _sanitizeAnalysis(dream.analysis),  // remove trailing divider
+                                      styleSheet:
+                                          MarkdownStyleSheet.fromTheme(
+                                                  Theme.of(context))
+                                              .copyWith(
+                                        p: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 13,
+                                        ),
+                                        strong: TextStyle(
+                                          color: toneStyle.text,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        em: TextStyle(
+                                          color: toneStyle.text,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        h1: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        h2: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
                                     ),
+                                    const SizedBox(height: 6),
+                                  ],
+
+                                  // Dream Notes
+                                  if (dream.notes.isNotEmpty) ...[
+                                    Text(
+                                      "Personal Notes:",
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: toneStyle.text,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    MarkdownBody(
+                                      data: dream.notes,
+                                      styleSheet:
+                                          MarkdownStyleSheet.fromTheme(
+                                                  Theme.of(context))
+                                              .copyWith(
+                                        p: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 12,
+                                        ),
+                                        strong: TextStyle(
+                                          color: toneStyle.text,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        em: TextStyle(
+                                          color: toneStyle.text,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        h1: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        h2: TextStyle(
+                                          color: toneStyle.text,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                  ],
+
+                                  // Notes + Share buttons
+                                  Row(
+                                    children: [
+                                      // Notes button
+                                      ElevatedButton.icon(
+                                        onPressed: () =>
+                                            _openNotesEditor(dream.id),
+                                        icon: const Icon(Icons.edit_note,
+                                            size: 16),
+                                        label: Text(
+                                          (dream.notes.trim().isNotEmpty)
+                                              ? 'Edit notes'
+                                              : 'Add notes',
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              const Color.fromARGB(
+                                                  255, 75, 3, 143),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 8),
+                                          minimumSize: const Size(0, 0),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+
+                                      // Share button with popup menu
+                                      Material(
+                                        // key: _shareAnchorKey,
+                                        color: const Color.fromARGB(
+                                            255, 75, 3, 143),
+                                        borderRadius: BorderRadius.circular(10),
+                                        elevation: 0,
+                                        child: PopupMenuButton<String>(
+                                          tooltip: 'Share',
+                                          offset: const Offset(0, 30),
+                                          onSelected: (v) {
+                                            if (v == 'with_text') {
+                                              _shareDream(dream);
+                                            } else if (v == 'image_only') {
+                                              _shareDreamImage(dream);
+                                            }
+                                          },
+                                          itemBuilder: (ctx) => const [
+                                            PopupMenuItem(
+                                              value: 'with_text',
+                                              child: Text(
+                                                  'Share dream + image'),
+                                            ),
+                                            PopupMenuItem(
+                                              value: 'image_only',
+                                              child:
+                                                  Text('Share image only'),
+                                            ),
+                                          ],
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 10, vertical: 8),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: const [
+                                                Icon(Icons.share,
+                                                    size: 16,
+                                                    color: Colors.white),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'Share ✨',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                      const Spacer(),
+            // Caret ^ close icon
+                                      IconButton(
+                                        icon: Icon(
+                                          // Icons.keyboard_arrow_up, // or Icons.expand_less
+                                          Icons.expand_less,
+                                          size: 32,
+                                          color: toneStyle.text,
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: () {
+                                          setState(() {
+                                            _expanded[dream.id] = false;
+                                          });
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ],
-                              )
-
-                              // Align(
-                              //   alignment: Alignment.centerLeft,
-                              //   child: ElevatedButton.icon(
-                              //     onPressed: () => _openNotesEditor(dream.id),
-                              //     icon: const Icon(Icons.edit_note, size: 16),
-                              //     label: Text(((dream.notes).trim().isNotEmpty) ? 'Edit notes' : 'Add notes'),
-                              //     style: ElevatedButton.styleFrom(
-                              //       backgroundColor: AppColors.purple600,
-                              //       foregroundColor: Colors.white,
-                              //       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                              //       minimumSize: const Size(0, 0),
-                              //       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              //       textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                              //       elevation: 0,
-                              //     ),
-                              //   ),
-                              // ),
-                            ],
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-
-
-                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        ),
+      )
     );
   }
 }
