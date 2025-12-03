@@ -233,6 +233,7 @@ class User(db.Model, UserMixin):
     language = db.Column(db.String(10), nullable=True, default='en')
     avatar_filename = db.Column(db.String(200), nullable=True)
     enable_audio = db.Column(db.Boolean, default=False)
+    email_confirmed = db.Column(db.Boolean, nullable=False, server_default=text("0"))
     subscriptions = db.relationship("UserSubscription", back_populates="user")
     payments = db.relationship("PaymentTransaction", back_populates="user")
 
@@ -311,6 +312,18 @@ class PasswordResetToken(db.Model):
     used_at = db.Column(db.DateTime, nullable=True)
     request_ip = db.Column(db.String(64))
     user_agent = db.Column(db.String(256))
+    user = db.relationship('User')
+
+
+class EmailConfirmToken(db.Model):
+    __tablename__ = 'email_confirm_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
     user = db.relationship('User')
 
 # models/subscriptions.py
@@ -471,7 +484,10 @@ class SubscriptionService:
         Returns:
             Dictionary with subscription details or payment URL
         """
+        # Allow lookup by primary key or by product_id (store product identifier)
         plan = SubscriptionPlan.query.get(plan_id)
+        if not plan:
+            plan = SubscriptionPlan.query.filter_by(product_id=plan_id).first()
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
         
@@ -937,8 +953,17 @@ def auth_google():
     # Check if user exists
     user = User.query.filter_by(email=email).first()
     if not user:
-        user = User(email=email, first_name=name or "Unknown", password='', timezone='')
+        user = User(
+            email=email,
+            first_name=name or "Unknown",
+            password='',
+            timezone='',
+            email_confirmed=True,
+        )
         db.session.add(user)
+        db.session.commit()
+    elif not user.email_confirmed:
+        user.email_confirmed = True
         db.session.commit()
 
     # login_user(user)
@@ -966,6 +991,8 @@ def api_google_login():
         iss = idinfo.get("iss")
         email = idinfo.get("email")
         email_verified = idinfo.get("email_verified", False)
+        full_name = idinfo.get("name") or ""
+        first_name = full_name.split()[0] if full_name else "Unknown"
 
         # 2) Strict issuer check
         if iss not in ALLOWED_ISS:
@@ -983,8 +1010,17 @@ def api_google_login():
         # 4) Normal login / signup flow
         user = User.query.filter_by(email=email).first()
         if not user:
-            user = User(email=email, first_name=idinfo.get("name") or "Unknown", password='', timezone='')
+            user = User(
+                email=email,
+                first_name=first_name,
+                password='',
+                timezone='',
+                email_confirmed=True,
+            )
             db.session.add(user)
+            db.session.commit()
+        elif not user.email_confirmed:
+            user.email_confirmed = True
             db.session.commit()
 
         login_user(user)
@@ -1007,19 +1043,17 @@ def api_google_login():
 # New user registration
 @app.route("/api/register", methods=["POST"])
 def register():
-    data = request.get_json()
-    first_name = data.get("first_name")
-    email = data.get("email", "").strip().lower()
-    gender = data.get("gender")
-    birthdate = data.get("birthdate")
+    data = request.get_json(silent=True) or {}
+    first_name = (data.get("first_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
     timezone_val = data.get("timezone")
-    password = data.get("password")
+    password = data.get("password") or ""
 
     logger.info(f"📨 Registration attempt: {email}")
 
     EMAIL_REGEX = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
-    if not first_name or len(first_name.strip()) > 50:
+    if not first_name or len(first_name) > 50:
         logger.warning("❌ Invalid name")
         return jsonify({"error": "Name must be 1–50 characters"}), 400
 
@@ -1031,29 +1065,50 @@ def register():
         logger.warning("❌ Invalid email")
         return jsonify({"error": "Invalid email address"}), 400
 
-    # Check for duplicates in users and pendingusers (case-insensitive)
-    if User.query.filter(func.lower(User.email) == email).first() or \
-        PendingUser.query.filter(func.lower(PendingUser.email) == email).first():
-        logger.warning("⚠️ Duplicate user or pending registration")
-        return jsonify({"error": "User already exists or is pending confirmation"}), 400
+    # Check for duplicates in users (case-insensitive)
+    existing = User.query.filter(func.lower(User.email) == email).first()
+    if existing:
+        logger.warning("⚠️ Duplicate user registration attempt")
+        return jsonify({"error": "User already exists"}), 400
 
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    token = str(uuid.uuid4())
-    pending = PendingUser(
-        uuid=token,
+    # Create real user immediately
+    user = User(
         email=email,
         password=hashed,
         first_name=first_name,
         timezone=timezone_val,
-        expires_at=datetime.utcnow() + timedelta(hours=24)
+        signup_date=datetime.utcnow(),
     )
 
-    db.session.add(pending)
-    db.session.commit()
+    db.session.add(user)
+    db.session.flush()  # ensure user.id is populated
 
-    logger.info(f"✅ Registered new pending user: {email}")
-    send_confirmation_email(email, token)
+    # Create a confirmation token, but do not gate access on it
+    try:
+        raw_token = _generate_raw_token()
+        ect = EmailConfirmToken(
+            user_id=user.id,
+            token_hash=_hash_token(raw_token),
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=7),
+        )
+        db.session.add(ect)
+        db.session.commit()
+
+        logger.info(f"✅ Registered new user: {email}")
+        send_confirmation_email(email, raw_token)
+    except Exception:
+        # Do not block registration/log-in if email sending fails
+        logger.exception("Failed to create/send confirmation token")
+        db.session.commit()
+
+    # Log the user in immediately so the app can start using the session
+    try:
+        login_user(user, remember=True, duration=timedelta(days=90))
+    except Exception:
+        logger.exception("Failed to log in user immediately after registration")
 
     return jsonify({
         "message": "Please check your email to confirm your Dreamr✨account"
@@ -1109,40 +1164,57 @@ def api_request_password_reset():
 @app.route("/confirm", methods=["GET"])
 def confirm_page():
     """Finalize account via token and show a simple message."""
-    token = request.args.get("token", "", type=str)
-    if not token:
+    raw = request.args.get("token", "", type=str)
+    if not raw:
         return render_template_string(CONFIRM_PAGE_TEMPLATE, status="invalid"), 400
 
-    pending = PendingUser.query.filter_by(uuid=token).first()
+    # Primary path: new-style email confirmation tokens
+    h = _hash_token(raw)
+    ect = EmailConfirmToken.query.filter_by(token_hash=h).first()
+    if ect:
+        if ect.expires_at < datetime.utcnow():
+            return render_template_string(CONFIRM_PAGE_TEMPLATE, status="expired"), 410
+
+        user = ect.user or User.query.get(ect.user_id)
+        if not user:
+            return render_template_string(CONFIRM_PAGE_TEMPLATE, status="invalid"), 400
+
+        if ect.used_at is not None or user.email_confirmed:
+            return render_template_string(CONFIRM_PAGE_TEMPLATE, status="exists"), 200
+
+        user.email_confirmed = True
+        ect.used_at = datetime.utcnow()
+        db.session.commit()
+        return render_template_string(CONFIRM_PAGE_TEMPLATE, status="ok"), 200
+
+    # Legacy fallback for older PendingUser-based links
+    pending = PendingUser.query.filter_by(uuid=raw).first()
     if not pending:
         return render_template_string(CONFIRM_PAGE_TEMPLATE, status="invalid"), 400
 
-    # Expired?
     if pending.expires_at and pending.expires_at < datetime.utcnow():
         db.session.delete(pending)
         db.session.commit()
         return render_template_string(CONFIRM_PAGE_TEMPLATE, status="expired"), 410
 
-    # Already confirmed?
     existing = User.query.filter_by(email=pending.email).first()
     if existing:
         db.session.delete(pending)
         db.session.commit()
         return render_template_string(CONFIRM_PAGE_TEMPLATE, status="exists"), 200
 
-    # Create the real user; NOTE: pending.password is already bcrypt-hashed in your /api/register
     new_user = User(
         email=pending.email,
         password=pending.password,
         first_name=pending.first_name,
         timezone=pending.timezone,
-        signup_date=datetime.utcnow()
+        signup_date=datetime.utcnow(),
+        email_confirmed=True,
     )
     db.session.add(new_user)
     db.session.delete(pending)
     db.session.commit()
 
-    # Do NOT login the browser session; we want app-only auth.
     return render_template_string(CONFIRM_PAGE_TEMPLATE, status="ok"), 200
 
 
@@ -1261,31 +1333,53 @@ def api_change_password():
 # Confirmation (for old web-app)
 @app.route("/api/confirm/<token>", methods=["GET"])
 def confirm_account(token):
-    pending = PendingUser.query.filter_by(uuid=token).first()
+    """JSON confirmation endpoint; does not gate access, just flips a flag."""
+    raw = token or ""
+    if not raw:
+        return jsonify({"error": "Invalid or expired confirmation link."}), 404
 
+    # Primary path: new-style confirmation tokens
+    h = _hash_token(raw)
+    ect = EmailConfirmToken.query.filter_by(token_hash=h).first()
+    if ect:
+        if ect.expires_at < datetime.utcnow():
+            return jsonify({"error": "Confirmation link has expired."}), 410
+
+        user = ect.user or User.query.get(ect.user_id)
+        if not user:
+            return jsonify({"error": "Invalid or expired confirmation link."}), 404
+
+        if ect.used_at is not None or user.email_confirmed:
+            return jsonify({"message": "Account already confirmed."}), 200
+
+        user.email_confirmed = True
+        ect.used_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"message": "Account confirmed."}), 200
+
+    # Legacy fallback for older PendingUser-based links
+    pending = PendingUser.query.filter_by(uuid=raw).first()
     if not pending:
         return jsonify({"error": "Invalid or expired confirmation link."}), 404
 
-    # Optional: Check if expired
     if pending.expires_at and pending.expires_at < datetime.utcnow():
         db.session.delete(pending)
         db.session.commit()
         return jsonify({"error": "Confirmation link has expired."}), 410
 
-    # Check if user already exists (paranoia)
     existing = User.query.filter_by(email=pending.email).first()
     if existing:
         db.session.delete(pending)
         db.session.commit()
         return jsonify({"message": "Account already confirmed."}), 200
 
-    # Create real user
     new_user = User(
         email=pending.email,
         password=pending.password,
         first_name=pending.first_name,
         timezone=pending.timezone,
-        signup_date=datetime.utcnow()
+        signup_date=datetime.utcnow(),
+        email_confirmed=True,
     )
 
     db.session.add(new_user)
@@ -1293,7 +1387,6 @@ def confirm_account(token):
     db.session.commit()
 
     login_user(new_user, remember=True)
-    # return redirect("/dashboard?confirmed=1")  # this was for when i tested hitting the api directly from the confirmation link
     return jsonify({"message": "Logged in"})
 
 
