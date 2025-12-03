@@ -2571,31 +2571,38 @@ def get_subscription_plans():
 @app.route("/api/subscription/purchase", methods=["POST"])
 @login_required
 def purchase_subscription():
-    """Initiate a subscription purchase"""
+    """Initiate a subscription purchase
+
+    NOTE: The mobile app may send either the internal plan id (e.g. "pro_monthly")
+    or the store product id (e.g. "dreamr_pro_monthly"). To be robust, accept
+    both by resolving via primary key *or* SubscriptionPlan.product_id.
+    """
     data = request.get_json(silent=True) or {}
-    plan_id = data.get("plan_id")
-    
-    if not plan_id:
+    raw_plan = data.get("plan_id")
+
+    if not raw_plan:
         return jsonify({"error": "plan_id is required"}), 400
-    
-    # Check if the plan exists
-    plan = SubscriptionPlan.query.get(plan_id)
+
+    # Allow lookup by primary key OR by product_id used in the stores
+    plan = SubscriptionPlan.query.get(raw_plan)
     if not plan:
-        return jsonify({"error": f"Plan {plan_id} not found"}), 404
-    
+        plan = SubscriptionPlan.query.filter_by(product_id=raw_plan).first()
+    if not plan:
+        return jsonify({"error": f"Plan {raw_plan} not found"}), 404
+
     try:
         # Determine payment provider
         payment_provider = data.get("payment_provider")
         receipt_data = data.get("receipt_data")
-        
-        # Initiate subscription
+
+        # Initiate subscription (pass the canonical plan id)
         result = SubscriptionService.initiate_subscription(
             user_id=current_user.id,
-            plan_id=plan_id,
+            plan_id=plan.id,
             payment_provider=payment_provider,
-            receipt_data=receipt_data
+            receipt_data=receipt_data,
         )
-        
+
         return jsonify(result)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
