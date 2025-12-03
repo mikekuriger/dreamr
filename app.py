@@ -638,6 +638,70 @@ class SubscriptionService:
         db.session.commit()
         return payment
     
+    # added by AZAD, not used
+    @staticmethod
+    def upsert_manual_subscription(
+        user_id,
+        plan_id,
+        months=None,
+        years=None,
+        expires_at=None,
+        payment_provider=None,
+    ):
+        """Manually create or repair an active subscription for a user.
+
+        Useful for admin repair tools when the store reports an active
+        subscription but the local DB is out of sync.
+        """
+        plan = SubscriptionPlan.query.get(plan_id)
+        if not plan:
+            raise ValueError(f"Plan {plan_id} not found")
+
+        now = datetime.utcnow()
+        if expires_at is None:
+            # Default to one billing period unless months/years override it
+            if months is not None:
+                expires_at = now + relativedelta(months=months)
+            elif years is not None:
+                expires_at = now + relativedelta(years=years)
+            elif plan.period == 'monthly':
+                expires_at = now + relativedelta(months=1)
+            elif plan.period == 'yearly':
+                expires_at = now + relativedelta(years=1)
+            else:
+                expires_at = now + timedelta(days=30)
+
+        # Most recent subscription for this user/plan, if any
+        sub = (
+            UserSubscription.query
+            .filter_by(user_id=user_id, plan_id=plan_id)
+            .order_by(UserSubscription.end_date.desc())
+            .first()
+        )
+
+        if sub is None:
+            sub = UserSubscription(
+                user_id=user_id,
+                plan_id=plan_id,
+                status='active',
+                start_date=now,
+                end_date=expires_at,
+                auto_renew=True,
+                payment_method=payment_provider or 'manual',
+                payment_provider=payment_provider or 'manual',
+            )
+            db.session.add(sub)
+        else:
+            sub.status = 'active'
+            sub.end_date = expires_at
+            sub.auto_renew = True
+            if payment_provider:
+                sub.payment_provider = payment_provider
+                sub.payment_method = payment_provider
+
+        db.session.commit()
+        return sub
+    
     @staticmethod
     def _verify_apple_receipt(receipt_data):
         """
@@ -2563,6 +2627,47 @@ def update_payment_method():
         logger.error(f"Error updating payment method: {e}", exc_info=True)
         return jsonify({"error": "Failed to update payment method"}), 500
 
+# added by AZAD, not used
+@app.route("/api/admin/subscription/force_set", methods=["POST"])
+@admin_required
+def admin_force_set_subscription():
+    """Admin-only endpoint to manually create or repair a user's subscription.
+
+    Useful when the store reports an active subscription but the local DB is
+    out of sync and requires repairing a single user record.
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    plan_id = data.get("plan_id")
+    months = data.get("months")
+    years = data.get("years")
+
+    if not user_id or not plan_id:
+        return jsonify({"error": "user_id and plan_id are required"}), 400
+
+    try:
+        sub = SubscriptionService.upsert_manual_subscription(
+            user_id=int(user_id),
+            plan_id=str(plan_id),
+            months=months,
+            years=years,
+            payment_provider="admin-force",
+        )
+        return jsonify({
+            "success": True,
+            "subscription": {
+                "id": sub.id,
+                "user_id": sub.user_id,
+                "plan_id": sub.plan_id,
+                "status": sub.status,
+                "start_date": sub.start_date.isoformat(),
+                "end_date": sub.end_date.isoformat() if sub.end_date else None,
+            },
+        })
+    except Exception as e:
+        logger.error("admin_force_set_subscription error: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+    
 # --- Optional: Webhook Handlers for App Store and Google Play ---
 @app.route("/api/webhooks/apple-iap", methods=["POST"])
 def apple_iap_webhook():
