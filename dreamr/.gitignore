@@ -44,6 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 b
+bb
+bd
+b.ios
+b.release
+junk
+test_account.txt
+subscriptions_overview.txt
 build
 *copy.dart
 
@@ -52,8 +59,6 @@ macos/
 google_client_ID
 google_client_ID-release
 key.txt
-bb
-bd
 imac.sh
 pubget_verbose*
 todo
