@@ -37,10 +37,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   // Handle subscription purchase
   Future<void> _subscribe(SubscriptionPlan plan) async {
+    // Log immediately when the user taps Subscribe so we know the button handler fired
+    debugPrint('SUB UI: subscribe tapped for plan=${plan.id}');
+
     setState(() => _loading = true);
     
     try {
-      final result = await context.read<SubscriptionModel>().subscribe(plan.id);
+      final result = await context.read<SubscriptionModel>().subscribe(plan);
       
       if (result != null && result.containsKey('payment_url')) {
         final url = result['payment_url'] as String;

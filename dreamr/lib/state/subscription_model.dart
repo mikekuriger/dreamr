@@ -75,8 +75,8 @@ class SubscriptionModel extends ChangeNotifier {
     }
   }
 
-  /// Initiate a subscription purchase
-  Future<Map<String, dynamic>?> subscribe(String planId) async {
+  /// Initiate a subscription purchase for a given plan
+  Future<Map<String, dynamic>?> subscribe(SubscriptionPlan plan) async {
     if (_loading) return null;
     
     _loading = true;
@@ -86,10 +86,21 @@ class SubscriptionModel extends ChangeNotifier {
     try {
       // First check if we can use in-app purchases
       if (_purchaseService.isAvailable) {
+        // Prefer the store-specific productId from the plan; fall back to the plan id
+        final targetId = plan.productId ?? plan.id;
+
+        debugPrint('SUB: attempting purchase for plan=${plan.id} productId=$targetId');
+
         // Find matching product in store
         final storeProduct = _purchaseService.products.firstWhere(
-          (product) => product.id == planId,
-          orElse: () => throw Exception('Product not available in store'),
+          (product) => product.id == targetId,
+          orElse: () {
+            final available =
+                _purchaseService.products.map((p) => p.id).join(', ');
+            throw Exception(
+              'Product not available in store (id=$targetId, store has: [$available])',
+            );
+          },
         );
         
         // Initiate purchase through store
@@ -101,12 +112,16 @@ class SubscriptionModel extends ChangeNotifier {
         // Return empty map as the purchase is being processed asynchronously
         return {};
       } else {
-        // Fallback to web/direct purchase flow
-        final result = await ApiService.initiateSubscription(planId);
+        // Fallback to web/direct purchase flow (uses plan primary key on the backend)
+        final result = await ApiService.initiateSubscription(plan.id);
         await refresh(); // Refresh status after subscribing
         return result;
       }
-    } catch (e) {
+    } catch (e, st) {
+      // Log detailed error so we can see exactly why the purchase failed
+      debugPrint('SUB ERROR: Failed to initiate subscription for plan='
+          '${plan.id} productId=${plan.productId ?? plan.id}: $e\n$st');
+
       _error = 'Failed to initiate subscription: $e';
       notifyListeners();
       return null;

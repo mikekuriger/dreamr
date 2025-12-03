@@ -69,7 +69,14 @@ class PurchaseService {
       
       final ProductDetailsResponse response = 
           await _inAppPurchase.queryProductDetails(_kProductIds);
-      
+
+      // Debug aid: log what the store actually returned so we can spot ID mismatches
+      debugPrint(
+        'IAP: queried $_kProductIds -> found: '
+        '${response.productDetails.map((p) => p.id).join(", ")} '
+        'notFound: ${response.notFoundIDs.join(", ")}',
+      );
+
       if (response.notFoundIDs.isNotEmpty) {
         _error = 'Some products were not found: ${response.notFoundIDs.join(", ")}';
       }
@@ -123,6 +130,12 @@ class PurchaseService {
 
   /// Listen to purchase updates
   void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
+    debugPrint(
+      'SUB LIST: ' +
+          purchaseDetailsList
+              .map((p) => '${p.productID}:${p.status}')
+              .join(', '),
+    );
     for (final purchaseDetails in purchaseDetailsList) {
       if (purchaseDetails.status == PurchaseStatus.pending) {
         _purchasePending = true;
