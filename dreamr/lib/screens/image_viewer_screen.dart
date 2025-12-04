@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:dreamr/models/dream.dart';
 import 'package:dreamr/widgets/dream_image.dart';
 import 'package:dreamr/services/image_store.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:mime/mime.dart';
+import 'dart:io';
+import 'package:dreamr/services/dio_client.dart';
 
 class ImageViewerScreen extends StatefulWidget {
   final List<Dream> dreams;
@@ -21,12 +25,144 @@ class ImageViewerScreen extends StatefulWidget {
 class _ImageViewerScreenState extends State<ImageViewerScreen> {
   late PageController _controller;
   late int _currentIndex;
+  final GlobalKey _shareButtonKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _controller = PageController(initialPage: _currentIndex);
+  }
+
+  // Compute origin rect for share sheets (iPad/macOS need an anchor).
+  Rect _originFromKey(GlobalKey key) {
+    final ctx = key.currentContext;
+    if (ctx == null) return const Rect.fromLTWH(100, 100, 1, 1);
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || box.size.isEmpty) {
+      return const Rect.fromLTWH(100, 100, 1, 1);
+    }
+    final topLeft = box.localToGlobal(Offset.zero);
+    return topLeft & box.size;
+  }
+
+  String _buildShareText(Dream dream) {
+    final userText = dream.text.trim();
+    final summary = dream.summary.trim();
+    final parts = <String>[];
+
+    if (summary.isNotEmpty) parts.add(summary);
+    if (userText.isNotEmpty) parts.add(userText);
+
+    return parts.join('\n\n-- Dream Details\n\n');
+  }
+
+  Future<File?> _resolveImageFileForShare(Dream dream) async {
+    if (dream.imageFile == null || dream.imageFile!.isEmpty) return null;
+
+    final hit = await ImageStore.localIfExists(
+      dream.id,
+      DreamImageKind.file,
+      dream.imageFile!,
+    );
+    if (hit != null) return hit;
+
+    try {
+      return await ImageStore.download(
+        dream.id,
+        DreamImageKind.file,
+        dream.imageFile!,
+        dio: DioClient.dio,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _shareDreamImage({
+    required Dream dream,
+    required Rect origin,
+    required bool includeText,
+  }) async {
+    final file = await _resolveImageFileForShare(dream);
+    final shareText = includeText ? _buildShareText(dream) : '';
+
+    if (file == null || !await file.exists()) {
+      if (shareText.isNotEmpty) {
+        await SharePlus.instance.share(
+          ShareParams(text: shareText, sharePositionOrigin: origin),
+        );
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image not available to share')),
+      );
+      return;
+    }
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile(
+            file.path,
+            mimeType: lookupMimeType(file.path) ?? 'image/jpeg',
+          ),
+        ],
+        text: shareText.isNotEmpty ? shareText : null,
+        sharePositionOrigin: origin,
+      ),
+    );
+  }
+
+  Future<void> _showShareOptions(Dream dream) async {
+    final origin = _originFromKey(_shareButtonKey);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.image, color: Colors.white),
+                title: const Text(
+                  'Share image only',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _shareDreamImage(
+                    dream: dream,
+                    origin: origin,
+                    includeText: false,
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.text_snippet, color: Colors.white),
+                title: const Text(
+                  'Share dream + image',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _shareDreamImage(
+                    dream: dream,
+                    origin: origin,
+                    includeText: true,
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -71,6 +207,25 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                     dream.summary,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        key: _shareButtonKey,
+                        onPressed: () => _showShareOptions(dream),
+                        icon: const Icon(Icons.share),
+                        label: const Text('Share'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 32), // Add bottom padding so text doesn’t hit edge
