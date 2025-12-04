@@ -181,8 +181,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   // Current subscription status
                   _buildCurrentSubscription(model.status),
                   
-                  // Restore purchases button (iOS only)
-                  if (Platform.isIOS) ...[
+                  // Restore purchases button (Google Play / App Store)
+                  ...[
                     const SizedBox(height: 12),
                     Center(
                       child: TextButton(
@@ -263,7 +263,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       decoration: BoxDecoration(
         color: isActive ? AppColors.purple900 : Colors.grey.shade800,  // current subscription card color
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber, width: 2),
+        border: Border.all(color: const Color.fromARGB(255, 184, 112, 251), width: 2),
+        // border: Border.all(color: const Color.fromARGB(255, 255, 83, 244), width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -349,7 +350,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         color: isCurrentPlan ? const Color.fromARGB(255, 0, 0, 0) : AppColors.purple900,    // plan card color
         borderRadius: BorderRadius.circular(12),
         border: isCurrentPlan
-            ? Border.all(color: Colors.amber, width: 2)
+            ? Border.all(color: const Color.fromARGB(255, 184, 112, 251), width: 2)
+            // ? Border.all(color: Colors.amber, width: 2)
             : null,
         boxShadow: [
           BoxShadow(

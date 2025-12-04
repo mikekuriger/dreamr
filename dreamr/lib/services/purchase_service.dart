@@ -118,12 +118,46 @@ class PurchaseService {
   /// Restore previous purchases
   Future<bool> restorePurchases() async {
     try {
-      if (Platform.isIOS) {
-        await InAppPurchase.instance.restorePurchases();
+      if (!_isAvailable) {
+        return false;
       }
-      return true;
+
+      if (Platform.isIOS) {
+        // iOS: this will trigger purchase updates for past purchases,
+        // which flow through _listenToPurchaseUpdated -> _verifyPurchase.
+        await InAppPurchase.instance.restorePurchases();
+        return true;
+      }
+
+      if (Platform.isAndroid) {
+        // Android: actively query past purchases via the platform addition
+        // and feed them through the same verification path.
+        final androidAddition =
+            _inAppPurchase.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
+        final response = await androidAddition.queryPastPurchases();
+
+        debugPrint(
+          'IAP: restorePurchases(android) found: ' +
+              response.pastPurchases
+                  .map((p) => '${p.productID}:${p.status}')
+                  .join(', '),
+        );
+
+        for (final pastPurchase in response.pastPurchases) {
+          await _verifyPurchase(pastPurchase);
+          if (pastPurchase.pendingCompletePurchase) {
+            await _inAppPurchase.completePurchase(pastPurchase);
+          }
+        }
+
+        return true;
+      }
+
+      // Other platforms: nothing to restore.
+      return false;
     } catch (e) {
       _error = 'Failed to restore purchases: $e';
+      debugPrint('IAP: restorePurchases error: $e');
       return false;
     }
   }
