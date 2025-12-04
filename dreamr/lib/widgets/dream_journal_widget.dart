@@ -14,11 +14,15 @@ import 'package:share_plus/share_plus.dart';
 class DreamJournalWidget extends StatefulWidget { 
   final VoidCallback? onDreamsLoaded;
   final List<Dream>? filteredDreams;
+  final bool autoExpandSingle;
+  final bool embeddedInScrollView;
 
   const DreamJournalWidget({
     super.key,
     this.onDreamsLoaded,
     this.filteredDreams,
+    this.autoExpandSingle = false,
+    this.embeddedInScrollView = true,
   });
 
   @override
@@ -244,7 +248,12 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
   @override
   void initState() {
     super.initState();
-    _loadDreams();
+    if (widget.filteredDreams != null) {
+      _loading = false;
+      widget.onDreamsLoaded?.call();
+    } else {
+      _loadDreams();
+    }
   }
 
   
@@ -489,14 +498,27 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
     final dreamsToDisplay = getDreams();
+
+    // If this widget is being used to show a single dream (e.g. in a detail page),
+    // optionally auto-expand that dream so the full content is visible by default.
+    if (widget.autoExpandSingle &&
+        dreamsToDisplay.length == 1 &&
+        !(_expanded[dreamsToDisplay.first.id] ?? false)) {
+      _expanded[dreamsToDisplay.first.id] = true;
+    }
+
     if (dreamsToDisplay.isEmpty) {
       return const Text("Your Dreams will appear here...");
     }
 
+    final bool interceptBack = widget.embeddedInScrollView;
+
     return PopScope<Object?>(
-      // If any card is expanded, we intercept the back press.
-      canPop: !_anyExpanded,
+      // In the journal screen we intercept back when a card is expanded;
+      // in standalone views we let the route pop normally.
+      canPop: !interceptBack || !_anyExpanded,
       onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (!interceptBack) return;
         // If the route actually popped, do nothing.
         if (didPop) return;
 
@@ -511,8 +533,10 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
         padding: const EdgeInsets.symmetric(horizontal: 0), //  side gap
         child: ListView.builder(
           padding: EdgeInsets.zero,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: widget.embeddedInScrollView,
+          physics: widget.embeddedInScrollView
+              ? const NeverScrollableScrollPhysics()
+              : const AlwaysScrollableScrollPhysics(),
           itemCount: dreamsToDisplay.length,
           itemBuilder: (context, index) {
             final dream = dreamsToDisplay[index];
@@ -890,22 +914,23 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       ),
 
                                       const Spacer(),
-            // Caret ^ close icon
-                                      IconButton(
-                                        icon: Icon(
-                                          // Icons.keyboard_arrow_up, // or Icons.expand_less
-                                          Icons.expand_less,
-                                          size: 32,
-                                          color: toneStyle.text,
+                                      // Caret ^ close icon (only needed in main journal view)
+                                      if (widget.embeddedInScrollView)
+                                        IconButton(
+                                          icon: Icon(
+                                            // Icons.keyboard_arrow_up, // or Icons.expand_less
+                                            Icons.expand_less,
+                                            size: 32,
+                                            color: toneStyle.text,
+                                          ),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () {
+                                            setState(() {
+                                              _expanded[dream.id] = false;
+                                            });
+                                          },
                                         ),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                        onPressed: () {
-                                          setState(() {
-                                            _expanded[dream.id] = false;
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ),
                                 ],

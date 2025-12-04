@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:dreamr/models/dream.dart';
 import 'package:dreamr/widgets/dream_image.dart';
+import 'package:dreamr/screens/dream_detail_screen.dart';
 import 'package:dreamr/services/image_store.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:mime/mime.dart';
@@ -221,8 +222,33 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                         icon: const Icon(Icons.share),
                         label: const Text('Share'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black87,
+                          backgroundColor:
+                              const Color.fromARGB(255, 75, 3, 143),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DreamDetailScreen(dream: dream),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('View dream'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              const Color.fromARGB(255, 75, 3, 143),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
                     ],
