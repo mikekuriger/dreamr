@@ -1,6 +1,7 @@
 // widgets/dream_journal_widget.dart
 import 'dart:io';
 import 'package:dreamr/models/dream.dart';
+import 'package:dreamr/screens/dream_detail_screen.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/services/dio_client.dart';
 import 'package:dreamr/services/image_store.dart';
@@ -564,9 +565,19 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                     // COLLAPSED ROW (image + title line)
                     GestureDetector(
                       onTap: () {
-                        setState(() {
-                          _expanded[dream.id] = !isExpanded;
-                        });
+                        // In the main journal view, tapping opens the full-page
+                        // "My Dream" detail screen instead of expanding in-place.
+                        if (widget.embeddedInScrollView) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DreamDetailScreen(
+                                dream: dream,
+                                prefetchImage: true,
+                              ),
+                            ),
+                          );
+                        }
                       },
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
