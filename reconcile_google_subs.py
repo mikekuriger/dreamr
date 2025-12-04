@@ -77,6 +77,18 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
         if limit is not None:
             q = q.limit(limit)
 
+        db_count = q.count()
+        LOG.info(
+            "Found %s Google user_subscriptions with provider_transaction_id",
+            db_count,
+        )
+        print(
+            f"[reconcile_google_subs] Found {db_count} Google subs to check "
+            f"(dry_run={dry_run})"
+        )
+        if db_count == 0:
+            return
+
         total = 0
         updated = 0
 
@@ -144,6 +156,10 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
             db.session.commit()
 
         LOG.info("Processed %s Google subs, updated %s", total, updated)
+        print(
+            f"[reconcile_google_subs] Processed {total} Google subs, "
+            f"updated {updated} (dry_run={dry_run})"
+        )
 
 
 def main():
