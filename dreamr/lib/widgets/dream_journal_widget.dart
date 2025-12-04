@@ -268,7 +268,8 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
         return ToneStyle(Colors.purple.shade100, Colors.black87);
       case 'nightmarish / dark':
         // return ToneStyle(Colors.black, Colors.red.shade500);  // 👈 spooky red
-        return ToneStyle(Colors.grey.shade900, Colors.orange.shade500);  // 👈 spooky orange
+        return ToneStyle(const Color.fromARGB(255, 26, 25, 25), const Color.fromARGB(255, 255, 167, 43));  // 👈 spooky orange
+        // return ToneStyle(Colors.grey.shade900, const Color.fromARGB(255, 81, 255, 241));  // 👈 glowing blue
       case 'romantic / nostalgic':
         return ToneStyle(Colors.pink.shade100, Colors.black87);
       case 'ancient / mythic':
@@ -554,8 +555,9 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                   color: toneStyle.background,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                    color: toneStyle.text.withValues(alpha: 0.5),
-                    width: .5,
+                    // color: toneStyle.text.withValues(alpha: 1),
+                    color: Color.fromARGB(255, 81, 255, 241).withValues(alpha: 1),
+                    width: .4,
                   ),
                 ),
                 child: Column(
@@ -568,32 +570,66 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                           _expanded[dream.id] = !isExpanded;
                         });
                       },
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (dream.imageTile != null &&
-                              dream.imageTile!.isNotEmpty)
-                            ClipRRect(
-                              // image hugs the card’s left/top/bottom
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(6),
-                                bottomLeft: Radius.circular(6),
-                                topRight: Radius.circular(6),
-                                bottomRight: Radius.circular(6),
-                              ),
-                              child: localFirstImage(
-                                dreamId: dream.id,
-                                url: dream.imageTile,
-                                kind: DreamImageKind.tile,
-                                width: 52, // tweak as desired
-                                height: 52,
-                                fit: BoxFit.cover,
-                                radius: BorderRadius.zero,
-                              ),
-                            ),
-                          Expanded(
-                            child: Padding(
-                              // padding only around text, not image
+                      child: widget.embeddedInScrollView
+                          // Main journal view: show tile image + text like before
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Always render the tile using localFirstImage;
+                                // it will show missing.png when imageTile is
+                                // NULL/empty, or the real tile when present.
+                                ClipRRect(
+                                  // image hugs the card’s left/top/bottom
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(6),
+                                    bottomLeft: Radius.circular(6),
+                                    topRight: Radius.circular(6),
+                                    bottomRight: Radius.circular(6),
+                                  ),
+                                  child: localFirstImage(
+                                    dreamId: dream.id,
+                                    url: dream.imageTile,
+                                    kind: DreamImageKind.tile,
+                                    width: 52, // tweak as desired
+                                    height: 52,
+                                    fit: BoxFit.cover,
+                                    radius: BorderRadius.zero,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    // padding only around text, not image
+                                    padding: const EdgeInsets.all(6),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          formattedDate,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: toneStyle.text,
+                                          ),
+                                        ),
+                                        Text(
+                                          dream.summary,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: toneStyle.text,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          // Detail view (My Dream page): text-only header
+                          : Padding(
                               padding: const EdgeInsets.all(6),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,9 +655,6 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                 ],
                               ),
                             ),
-                          ),
-                        ],
-                      ),
                     ),
 
                     // EXPANDED CONTENT

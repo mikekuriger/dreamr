@@ -210,55 +210,60 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton.icon(
-                        key: _shareButtonKey,
-                        onPressed: () => _showShareOptions(dream),
-                        icon: const Icon(Icons.share),
-                        label: const Text('Share'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color.fromARGB(255, 75, 3, 143),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DreamDetailScreen(dream: dream),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('View dream'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              const Color.fromARGB(255, 75, 3, 143),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 32), // Add bottom padding so text doesn’t hit edge
               ],
             ),
           );
         },
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+  // Open dream button            
+              ElevatedButton.icon(
+                onPressed: () {
+                  final dream = widget.dreams[_currentIndex];
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DreamDetailScreen(dream: dream),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open dream'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+  // Share button
+              ElevatedButton.icon(
+                key: _shareButtonKey,
+                onPressed: () => _showShareOptions(
+                  widget.dreams[_currentIndex],
+                ),
+                icon: const Icon(Icons.share),
+                label: const Text('Share'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

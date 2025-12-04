@@ -66,11 +66,17 @@ class _DreamImageState extends State<DreamImage> {
           );
     }
     if (_file != null) {
-      return Image.file(_file!, width: widget.width, height: widget.height, fit: widget.fit);
+      return Image.file(
+        _file!,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+      );
     }
     return widget.error ??
         Container(
-          width: widget.width, height: widget.height,
+          width: widget.width,
+          height: widget.height,
           alignment: Alignment.center,
           color: Colors.black12,
           child: const Icon(Icons.broken_image),
