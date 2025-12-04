@@ -228,7 +228,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 // Plan cards (excluding free plans)
                 ...model.plans
                     .where((plan) => plan.id != 'trial_5day')
-                    .map((plan) => _buildPlanCard(plan, model.status)),
+                    .map((plan) => _buildPlanCard(
+                          plan,
+                          model.status,
+                        )),
                 
                 // Show a message if no plans are available
                 if (model.plans.isEmpty)
@@ -258,8 +261,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isActive ? AppColors.purple800 : Colors.grey.shade800,  // current subscription card color
+        color: isActive ? AppColors.purple900 : Colors.grey.shade800,  // current subscription card color
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -280,7 +284,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Current Plan: ${status.tier.toUpperCase()}',
+                status.tier.toUpperCase(),
+                // 'Dreamr: ${status.tier.toUpperCase()}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -298,15 +303,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 : 'You are currently on the free plan',
             style: TextStyle(
               color: isActive ? Colors.white : Colors.white70,
-              fontSize: 14,
+              fontSize: 12,
             ),
           ),
           
           if (isActive) ...[
             const SizedBox(height: 16),
-            
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   status.autoRenew ? 'Auto-renews' : 'Does not auto-renew',
@@ -315,27 +319,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     fontSize: 14,
                   ),
                 ),
-                
-                ElevatedButton(
-                  onPressed: _loading ? null : _cancelSubscription,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
+                const SizedBox(height: 8),
+                const Text(
+                  'To change or cancel your subscription, manage it from the App Store / Google Play subscriptions page.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
                   ),
-                  child: _loading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Cancel'),
                 ),
               ],
             ),
@@ -347,7 +337,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   // Build a subscription plan card
   Widget _buildPlanCard(SubscriptionPlan plan, SubscriptionStatus currentStatus) {
-    final bool isCurrentPlan = currentStatus.tier == plan.id && currentStatus.isActive;
+    final bool isCurrentPlan =
+        currentStatus.tier == plan.id && currentStatus.isActive;
+    final bool disableSubscribe =
+        currentStatus.isActive && currentStatus.tier != 'free';
     
     return Container(
       width: double.infinity,
@@ -446,11 +439,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                 
                 const SizedBox(height: 16),
                 
-                // Subscribe button
+                // Subscribe button (disabled when user already has any active subscription)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: isCurrentPlan || _loading
+                    onPressed: disableSubscribe || _loading
                         ? null
                         : () => _subscribe(plan),
                     style: ElevatedButton.styleFrom(
