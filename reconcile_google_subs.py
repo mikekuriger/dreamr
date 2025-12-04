@@ -1,3 +1,5 @@
+#!/opt/dreamr-venv/bin/python
+
 """Reconcile Google Play subscriptions with Dreamr DB.
 
 Usage (from back_end/dreamr):
