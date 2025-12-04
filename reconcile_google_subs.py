@@ -96,7 +96,9 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
 
         for sub in q:
             total += 1
-            token = sub.provider_transaction_id
+            # Prefer the real Play purchase token from receipt_data; fall
+            # back to provider_transaction_id only if needed.
+            token = sub.receipt_data or sub.provider_transaction_id
             plan = sub.plan
             if plan is None:
                 LOG.warning("user_subscriptions id=%s has no plan; skipping", sub.id)
