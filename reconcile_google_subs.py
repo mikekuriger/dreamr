@@ -102,6 +102,7 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
             plan = sub.plan
             if plan is None:
                 LOG.warning("user_subscriptions id=%s has no plan; skipping", sub.id)
+                print(f"[reconcile_google_subs] SKIP user={sub.user_id} sub={sub.id}: no plan")
                 continue
 
             subscription_id = plan.product_id or plan.id
@@ -113,6 +114,10 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
                 sub.plan_id,
                 subscription_id,
                 token,
+            )
+            print(
+                f"[reconcile_google_subs] Checking user={sub.user_id} sub={sub.id} "
+                f"plan={sub.plan_id} product_id={subscription_id}"
             )
 
             try:
@@ -128,6 +133,10 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
                 )
             except Exception as e:  # noqa: BLE001
                 LOG.error("Google API error user=%s sub=%s: %s", sub.user_id, sub.id, e)
+                print(
+                    f"[reconcile_google_subs] Google API ERROR user={sub.user_id} "
+                    f"sub={sub.id}: {e}"
+                )
                 continue
 
             new_fields = map_google_to_local(resp)
@@ -138,16 +147,13 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
                 or sub.auto_renew != new_fields["auto_renew"]
             )
 
-            LOG.info(
-                "Result user=%s sub=%s: status %s -> %s, end %s -> %s, auto_renew %s -> %s",
-                sub.user_id,
-                sub.id,
-                sub.status,
-                new_fields["status"],
-                sub.end_date,
-                new_fields["end_date"],
-                sub.auto_renew,
-                new_fields["auto_renew"],
+            print(
+                "[reconcile_google_subs] DB vs Google for "
+                f"user={sub.user_id} sub={sub.id}: "
+                f"status {sub.status} -> {new_fields['status']}, "
+                f"end {sub.end_date} -> {new_fields['end_date']}, "
+                f"auto_renew {sub.auto_renew} -> {new_fields['auto_renew']} "
+                f"(changed={changed}, dry_run={dry_run})"
             )
 
             if not dry_run and changed:
@@ -155,6 +161,10 @@ def reconcile_google_subscriptions(dry_run=True, limit=None):
                 sub.end_date = new_fields["end_date"]
                 sub.auto_renew = new_fields["auto_renew"]
                 updated += 1
+                print(
+                    f"[reconcile_google_subs] UPDATED user={sub.user_id} sub={sub.id} "
+                    f"to status={sub.status}, end={sub.end_date}, auto_renew={sub.auto_renew}"
+                )
 
         if not dry_run:
             db.session.commit()
