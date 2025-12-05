@@ -37,6 +37,8 @@ import openai
 import os
 import re
 import requests
+import jwt
+from jwt import PyJWKClient, InvalidTokenError
 import shutil
 import string
 import time
@@ -83,6 +85,12 @@ IOS_CLIENT_ID = "846080686597-8u85pj943ilkmlt583f3tct5h9ca0c3t.apps.googleuserco
 ALLOWED_AUDS = {WEB_CLIENT_ID, IOS_CLIENT_ID}
 ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
 
+APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+# For native Sign in with Apple, this should match the client_id used on iOS (bundle id or service id).
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or os.getenv("APPLE_BUNDLE_ID")
+
+_apple_jwk_client = PyJWKClient(APPLE_JWKS_URL)
 
 # apple store
 @app.post("/appstore/notifications")
@@ -1105,27 +1113,70 @@ def api_google_login():
             logger.info("google login failed: %s", e)
         return jsonify({"error": "Invalid token, naughty!"}), 400
 
+# helper for Apple verification
+def verify_apple_identity_token(identity_token: str) -> dict:
+    """Verify an Apple Sign in with Apple identity token (JWT) and return its claims."""
+    if not APPLE_CLIENT_ID:
+        # Misconfiguration on the server – fail closed rather than accepting tokens.
+        raise RuntimeError("APPLE_CLIENT_ID or APPLE_BUNDLE_ID must be configured on the server")
+
+    # Apple publishes public keys at APPLE_JWKS_URL and signs tokens with RS256.
+    signing_key = _apple_jwk_client.get_signing_key_from_jwt(identity_token)
+    claims = jwt.decode(
+        identity_token,
+        signing_key.key,
+        algorithms=["RS256"],
+        audience=APPLE_CLIENT_ID,
+        issuer=APPLE_ISSUER,
+    )
+    return claims
+
+
 # Apple Logins on IOS
 @app.route("/api/apple_login", methods=["POST"])
 def apple_login():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     identity_token = data.get("identity_token")
-    authorization_code = data.get("authorization_code")
+    authorization_code = data.get("authorization_code")  # currently unused
     user_identifier = data.get("user_identifier")
     email = data.get("email")
     full_name = data.get("full_name")
     first_name = full_name.split()[0] if full_name else "Unknown"
 
-    if not identity_token or not user_identifier:
-        return jsonify({"error": "Missing identity token or user id"}), 400
+    if not identity_token:
+        return jsonify({"error": "Missing identity token"}), 400
 
-    # TODO: VERIFY identity_token with Apple's public keys and check:
-    #  - iss == "https://appleid.appleid.com"
-    #  - aud == your bundle id / client id
-    #  - exp in future
+    # Verify the Apple identity token (signature + iss/aud/exp).
+    try:
+        claims = verify_apple_identity_token(identity_token)
+    except (InvalidTokenError, RuntimeError) as e:
+        logger.info("Apple login failed token check: %s", e)
+        return jsonify({"error": "Invalid Apple identity token"}), 400
+    except Exception:
+        logger.exception("Apple login unexpected error while verifying token")
+        return jsonify({"error": "Apple identity token verification failed"}), 400
+
+    token_sub = claims.get("sub")
+    if not token_sub:
+        return jsonify({"error": "Apple identity token missing subject"}), 400
+
+    # If the client also sent a user_identifier, make sure it matches the token.
+    if user_identifier and user_identifier != token_sub:
+        return jsonify({"error": "Apple user id mismatch"}), 400
+
+    apple_user_id = token_sub
+
+    email_from_token = claims.get("email")
+    email_verified = claims.get("email_verified")
+    if isinstance(email_verified, str):
+        email_verified = email_verified.lower() == "true"
+
+    # Prefer the (verified) email from the token, but fall back to payload.
+    if email_from_token and (email_verified is True or email_verified is None):
+        email = email_from_token or email
 
     # 1) Try by apple_user_id first
-    user = User.query.filter_by(apple_user_id=user_identifier).first()
+    user = User.query.filter_by(apple_user_id=apple_user_id).first()
 
     # 2) If no user yet, try merge by email (if Apple gave one)
     if not user and email:
@@ -1136,10 +1187,10 @@ def apple_login():
         if not email:
             # Apple should provide an email (real or relay) on first auth.
             # If not, we can't safely create an account.
-            return jsonify({"error": "Apple did not provide an email address"}), 400
+            return jsonify({"error": "Apple did not provide an email address, try clearing your saved password for Dreamr in Settings/<your account>/Sign in with apple - and try again"}), 400
 
         user = User(
-            apple_user_id=user_identifier,
+            apple_user_id=apple_user_id,
             email=email,
             first_name=first_name,
             password='',
@@ -1150,11 +1201,11 @@ def apple_login():
     else:
         # Attach Apple ID if we found user by email only
         if not user.apple_user_id:
-            user.apple_user_id = user_identifier
+            user.apple_user_id = apple_user_id
 
     try:
         db.session.commit()
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Account conflict, please contact support"}), 400
 
