@@ -234,6 +234,7 @@ class User(db.Model, UserMixin):
     avatar_filename = db.Column(db.String(200), nullable=True)
     enable_audio = db.Column(db.Boolean, default=False)
     email_confirmed = db.Column(db.Boolean, nullable=False, server_default=text("0"))
+    apple_user_id = db.Column(db.String(255), unique=True, nullable=True, index=True)
     subscriptions = db.relationship("UserSubscription", back_populates="user")
     payments = db.relationship("PaymentTransaction", back_populates="user")
 
@@ -1102,6 +1103,53 @@ def api_google_login():
         except Exception:
             logger.info("google login failed: %s", e)
         return jsonify({"error": "Invalid token, naughty!"}), 400
+
+# Apple Logins on IOS
+@app.route("/api/apple_login", methods=["POST"])
+def apple_login():
+    data = request.get_json() or {}
+    identity_token = data.get("identity_token")
+    authorization_code = data.get("authorization_code")
+    user_identifier = data.get("user_identifier")
+    email = data.get("email")
+    full_name = data.get("full_name")
+
+    if not identity_token or not user_identifier:
+        return jsonify({"error": "Missing identity token or user id"}), 400
+
+    # TODO: VERIFY identity_token with Apple's public keys and check:
+    #  - iss == "https://appleid.apple.com"
+    #  - aud == your bundle id / client id
+    #  - exp in future
+    #
+    # For now you can stub while wiring the flow, but do NOT ship to prod
+    # without real verification.
+
+    # Look up or create user
+    user = User.query.filter_by(apple_user_id=user_identifier).first()
+
+    if not user:
+      # Optionally: if email present, merge with existing account by email
+      if email:
+          user = User.query.filter_by(email=email).first()
+
+      if not user:
+          user = User(
+              apple_user_id=user_identifier,
+              email=email,
+              name=full_name,
+              # set any other defaults you need
+          )
+          db.session.add(user)
+      else:
+          # Attach Apple ID to existing user
+          user.apple_user_id = user_identifier
+
+      db.session.commit()
+
+    # Whatever you already return on login:
+    # e.g. user dict + JWT session token
+    return jsonify({"user": user.to_dict()}), 200
 
 
 # New user registration
