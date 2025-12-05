@@ -11,6 +11,8 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from jwt import InvalidTokenError
+import jwt
 from langdetect import detect
 from openai import OpenAI
 from PIL import Image
@@ -1118,19 +1120,69 @@ def api_google_login():
 def verify_apple_identity_token(identity_token: str) -> dict:
     """Verify an Apple Sign in with Apple identity token (JWT) and return its claims."""
     if not APPLE_CLIENT_ID:
-        # Misconfiguration on the server – fail closed rather than accepting tokens.
-        raise RuntimeError("APPLE_CLIENT_ID or APPLE_BUNDLE_ID must be configured on the server")
+        raise RuntimeError(
+            "APPLE_CLIENT_ID or APPLE_BUNDLE_ID must be configured on the server"
+        )
 
-    # Apple publishes public keys at APPLE_JWKS_URL and signs tokens with RS256.
-    signing_key = _apple_jwk_client.get_signing_key_from_jwt(identity_token)
-    claims = jwt.decode(
-        identity_token,
-        signing_key.key,
-        algorithms=["RS256"],
-        audience=APPLE_CLIENT_ID,
-        issuer=APPLE_ISSUER,
-    )
-    return claims
+    try:
+        # Get the signing key for this token from Apple's JWKS
+        signing_key = _apple_jwk_client.get_signing_key_from_jwt(identity_token)
+    except Exception as e:
+        logger.exception("Failed to get Apple signing key from JWKS: %s", e)
+        raise
+
+    try:
+        claims = jwt.decode(
+            identity_token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=APPLE_CLIENT_ID,
+            issuer=APPLE_ISSUER,
+        )
+        # Log the good case at info level once while testing
+        logger.info(
+            "Apple token verified: iss=%s aud=%s sub=%s email=%s exp=%s",
+            claims.get("iss"),
+            claims.get("aud"),
+            claims.get("sub"),
+            claims.get("email"),
+            claims.get("exp"),
+        )
+        return claims
+
+    except InvalidTokenError as e:
+        # Try decoding without verification just so we can inspect claims.
+        try:
+            raw_claims = jwt.decode(
+                identity_token,
+                options={
+                    "verify_signature": False,
+                    "verify_aud": False,
+                    "verify_iss": False,
+                    "verify_exp": False,
+                },
+            )
+            logger.warning(
+                "Apple token failed verification (%s). Raw claims: iss=%s aud=%s sub=%s email=%s exp=%s",
+                e,
+                raw_claims.get("iss"),
+                raw_claims.get("aud"),
+                raw_claims.get("sub"),
+                raw_claims.get("email"),
+                raw_claims.get("exp"),
+            )
+        except Exception as inner:
+            logger.warning(
+                "Apple token failed verification (%s) and could not decode raw claims: %s",
+                e,
+                inner,
+            )
+        raise
+
+    except Exception as e:
+        logger.exception("Unexpected error verifying Apple identity token: %s", e)
+        raise
+
 
 
 # Apple Logins on IOS
