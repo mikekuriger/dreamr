@@ -308,6 +308,36 @@ class ApiService {
     return Map<String, dynamic>.from(res.data['user'] ?? {});
   }
 
+  // Apple auth
+  static Future<void> appleLogin({
+    required String identityToken,
+    required String authorizationCode,
+    required String userIdentifier,
+    String? email,
+    String? fullName,
+  }) async {
+    final res = await DioClient.dio.post(
+      '/api/apple_login',
+      data: {
+        'identity_token': identityToken,
+        'authorization_code': authorizationCode,
+        'user_identifier': userIdentifier,
+        'email': email,
+        'full_name': fullName,
+      },
+      options: Options(validateStatus: (_) => true),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(
+        res.data is Map && res.data['error'] != null
+            ? res.data['error']
+            : 'Apple login failed',
+      );
+    }
+  }
+
+
   // Resend verification email
   static Future<void> resendVerificationEmail() async {
     final res = await DioClient.dio.post('/api/email/resend',

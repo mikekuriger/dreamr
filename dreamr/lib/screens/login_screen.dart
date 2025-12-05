@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
 import 'package:dreamr/widgets/main_scaffold.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/theme/colors.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dreamr/constants.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'dart:io' show Platform;
+
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -137,9 +140,73 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
         );
       }
-      
+
       // Sign out to clean up any partial sign-in state
       _googleSignIn.signOut();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ===== Apple login =====
+  Future<void> _handleAppleSignIn(AuthorizationCredentialAppleID credential) async {
+    if (_loading) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final identityToken = credential.identityToken;
+      final userIdentifier = credential.userIdentifier;
+
+      if (identityToken == null) {
+        throw Exception('Failed to get identity token from Apple');
+      }
+      if (userIdentifier == null) {
+        throw Exception('Failed to get Apple user identifier');
+      }
+
+      // Build a simple full name if Apple gave you one (only on first sign-in)
+      String? fullName;
+      if (credential.givenName != null || credential.familyName != null) {
+        fullName = [
+          credential.givenName ?? '',
+          credential.familyName ?? '',
+        ].join(' ').trim();
+      }
+
+      // Call backend; it just returns {success: true} or error
+      await ApiService.appleLogin(
+        identityToken: identityToken,
+        authorizationCode: credential.authorizationCode,
+        userIdentifier: userIdentifier,
+        email: credential.email,
+        fullName: fullName,
+      );
+
+      // Persist login method + Apple user id
+      await _secure.write(key: 'login_method', value: 'apple');
+      await _secure.write(key: 'apple_user_id', value: credential.userIdentifier);
+
+      // Mark logged in (same pattern as Google; no userId here)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('loggedIn', true);
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),
+      );
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _error = msg);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+        );
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -308,18 +375,28 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                     // Apple placeholder (disabled for now)
-                    // Opacity(
-                    //   opacity: 0.4,
-                    //   child: OutlinedButton(
-                    //     onPressed: null, // disabled
-                    //     style: OutlinedButton.styleFrom(
-                    //       foregroundColor: Colors.white,
-                    //       side: const BorderSide(color: Colors.white54),
-                    //       minimumSize: const Size(220, 44),
-                    //     ),
-                    //     child: const Text("Continue with Apple (coming soon)"),
-                    //   ),
-                    // ),
+                    Opacity(
+                      opacity: 0.4,
+                      child: SignInWithAppleButton(
+                        onPressed: () async {
+                          try {
+                            final credential =
+                                await SignInWithApple.getAppleIDCredential(
+                              scopes: [
+                                AppleIDAuthorizationScopes.email,
+                                AppleIDAuthorizationScopes.fullName,
+                              ],
+                            );
+                            // Send credential to your backend to log in / register.
+                            await _handleAppleSignIn(credential);
+                          } catch (e, st) {
+                            // Log error, show snackbar, etc.
+                            debugPrint('Apple sign-in failed: $e\n$st');
+                          }
+                        },
+                        style: SignInWithAppleButtonStyle.black, 
+                      ),
+                    ),
                   ],
                 ),
               ),
