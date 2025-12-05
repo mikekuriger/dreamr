@@ -23,6 +23,7 @@ from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
 from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
@@ -1113,43 +1114,55 @@ def apple_login():
     user_identifier = data.get("user_identifier")
     email = data.get("email")
     full_name = data.get("full_name")
+    first_name = full_name.split()[0] if full_name else "Unknown"
 
     if not identity_token or not user_identifier:
         return jsonify({"error": "Missing identity token or user id"}), 400
 
     # TODO: VERIFY identity_token with Apple's public keys and check:
-    #  - iss == "https://appleid.apple.com"
+    #  - iss == "https://appleid.appleid.com"
     #  - aud == your bundle id / client id
     #  - exp in future
-    #
-    # For now you can stub while wiring the flow, but do NOT ship to prod
-    # without real verification.
 
-    # Look up or create user
+    # 1) Try by apple_user_id first
     user = User.query.filter_by(apple_user_id=user_identifier).first()
 
+    # 2) If no user yet, try merge by email (if Apple gave one)
+    if not user and email:
+        user = User.query.filter_by(email=email).first()
+
+    # 3) If still no user, create a new one
     if not user:
-      # Optionally: if email present, merge with existing account by email
-      if email:
-          user = User.query.filter_by(email=email).first()
+        if not email:
+            # Apple should provide an email (real or relay) on first auth.
+            # If not, we can't safely create an account.
+            return jsonify({"error": "Apple did not provide an email address"}), 400
 
-      if not user:
-          user = User(
-              apple_user_id=user_identifier,
-              email=email,
-              name=full_name,
-              # set any other defaults you need
-          )
-          db.session.add(user)
-      else:
-          # Attach Apple ID to existing user
-          user.apple_user_id = user_identifier
+        user = User(
+            apple_user_id=user_identifier,
+            email=email,
+            first_name=first_name,
+            password='',
+            timezone='',
+            email_confirmed=True,
+        )
+        db.session.add(user)
+    else:
+        # Attach Apple ID if we found user by email only
+        if not user.apple_user_id:
+            user.apple_user_id = user_identifier
 
-      db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        return jsonify({"error": "Account conflict, please contact support"}), 400
 
-    # Whatever you already return on login:
-    # e.g. user dict + JWT session token
-    return jsonify({"user": user.to_dict()}), 200
+    # 4) Log the user in (session cookie, same as Google)
+    login_user(user)
+
+    return jsonify({"success": True}), 200
+
 
 
 # New user registration
