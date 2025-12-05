@@ -90,8 +90,8 @@ ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
 APPLE_ISSUER = "https://appleid.apple.com"
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 # For native Sign in with Apple, this should match the client_id used on iOS (bundle id or service id).
-APPLE_BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "me.zentha.dreamr")
-APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or os.getenv("APPLE_BUNDLE_ID")
+APPLE_BUNDLE_ID = "me.zentha.dreamr"
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or APPLE_BUNDLE_ID
 
 _apple_jwk_client = PyJWKClient(APPLE_JWKS_URL)
 
@@ -1140,14 +1140,14 @@ def verify_apple_identity_token(identity_token: str) -> dict:
             issuer=APPLE_ISSUER,
         )
         # Log the good case at info level once while testing
-        logger.info(
-            "Apple token verified: iss=%s aud=%s sub=%s email=%s exp=%s",
-            claims.get("iss"),
-            claims.get("aud"),
-            claims.get("sub"),
-            claims.get("email"),
-            claims.get("exp"),
-        )
+        # logger.info(
+        #     "Apple token verified: iss=%s aud=%s sub=%s email=%s exp=%s",
+        #     claims.get("iss"),
+        #     claims.get("aud"),
+        #     claims.get("sub"),
+        #     claims.get("email"),
+        #     claims.get("exp"),
+        # )
         return claims
 
     except InvalidTokenError as e:
@@ -1162,15 +1162,15 @@ def verify_apple_identity_token(identity_token: str) -> dict:
                     "verify_exp": False,
                 },
             )
-            logger.warning(
-                "Apple token failed verification (%s). Raw claims: iss=%s aud=%s sub=%s email=%s exp=%s",
-                e,
-                raw_claims.get("iss"),
-                raw_claims.get("aud"),
-                raw_claims.get("sub"),
-                raw_claims.get("email"),
-                raw_claims.get("exp"),
-            )
+            # logger.warning(
+            #     "Apple token failed verification (%s). Raw claims: iss=%s aud=%s sub=%s email=%s exp=%s",
+            #     e,
+            #     raw_claims.get("iss"),
+            #     raw_claims.get("aud"),
+            #     raw_claims.get("sub"),
+            #     raw_claims.get("email"),
+            #     raw_claims.get("exp"),
+            # )
         except Exception as inner:
             logger.warning(
                 "Apple token failed verification (%s) and could not decode raw claims: %s",
