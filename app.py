@@ -88,22 +88,23 @@ ALLOWED_ISS = {"https://accounts.google.com", "accounts.google.com"}
 APPLE_ISSUER = "https://appleid.apple.com"
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 # For native Sign in with Apple, this should match the client_id used on iOS (bundle id or service id).
+APPLE_BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "me.zentha.dreamr")
 APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or os.getenv("APPLE_BUNDLE_ID")
 
 _apple_jwk_client = PyJWKClient(APPLE_JWKS_URL)
 
 # apple store
-@app.post("/appstore/notifications")
-def appstore_notifications():
-    data = request.get_json(force=True, silent=True)
-    # For v2, payload is usually in data["signedPayload"] (string JWS)
-    # TODO: verify JWS using Apple JWKS, then decode claims
-    # TODO: handle notificationType/subtype and update your DB
-    return jsonify({"status": "ok"}), 200
+# @app.post("/appstore/notifications")
+# def appstore_notifications():
+#     data = request.get_json(force=True, silent=True)
+#     # For v2, payload is usually in data["signedPayload"] (string JWS)
+#     # TODO: verify JWS using Apple JWKS, then decode claims
+#     # TODO: handle notificationType/subtype and update your DB
+#     return jsonify({"status": "ok"}), 200
 
-@app.post("/appstore/notifications-sandbox")
-def appstore_notifications_sbx():
-    return jsonify({"status": "ok"}), 200
+# @app.post("/appstore/notifications-sandbox")
+# def appstore_notifications_sbx():
+#     return jsonify({"status": "ok"}), 200
 
 
 # --- Admin config ---
