@@ -146,6 +146,7 @@ flutter:
     - assets/images/google_logo.svg
     - assets/sound/tell_me_about.mp3
     - assets/gcloud-key.json
+    - assets/privacy_policy.txt
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

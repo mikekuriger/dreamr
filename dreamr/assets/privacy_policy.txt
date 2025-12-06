@@ -1,0 +1,93 @@
+Privacy Policy – Dreamr
+Effective Date: April 30, 2025
+
+1. Information We Collect
+We collect the minimum information needed to create and operate your Dreamr account and provide dream analysis features.
+
+Account Information
+- First name
+- Email address
+- Login credentials (password stored as a secure hash)
+- Social login identifiers (such as your Apple user ID or Google account ID and email, if you choose to sign in with those services)
+- Device timezone (automatically provided by your device)
+- Optional profile details you choose to provide, such as birthdate and gender
+
+Dream Content
+- Dreams you submit (text)
+- AI-generated interpretations, summaries, and other responses based on your dreams
+- Optional dream images generated for you and associated metadata (e.g., file name, style, timestamps)
+
+Subscription and Purchase Data
+- Subscription plan (e.g., Pro monthly or yearly)
+- App Store / Google Play purchase tokens or receipts
+- Basic billing status information (e.g., active, canceled, expired)
+
+Dreamr does not receive or store your full payment card details. All payment processing is handled by Apple (App Store) or Google (Play Store).
+
+Technical and Usage Information
+- IP address and basic device information (e.g., operating system, app version) captured in server logs
+- Timestamps of logins, requests, and errors
+
+We use this information to operate, secure, and diagnose issues with the service.
+We do not sell your personal information. We do not share your data with third parties for advertising or marketing.
+
+2. Location Data
+Dreamr does not access or collect GPS or precise location data.
+
+3. How We Use Your Information
+We use the information we collect to:
+- Create and maintain your account
+- Store and display your dream journal, AI analyses, and associated images
+- Provide optional image generation features based on your dreams
+- Manage subscriptions and verify purchases through Apple and Google
+- Adjust timestamps and notifications to your timezone
+- Send account-related emails (such as verification, password reset, and important service updates)
+- Maintain and improve app performance, security, and reliability
+
+We do not use your data for targeted advertising.
+
+4. Third-Party Services
+Dreamr may interact with the following third-party services:
+
+- OpenAI and other AI providers – Used to analyze dreams and generate text and image responses based on the content you submit. Your dream text or prompts derived from it are sent to these providers so they can generate responses.
+- Apple (App Store) and Google (Google Play) – Handle app distribution, subscription management, and payment processing.
+- Hosting and infrastructure providers – Used to host our servers and databases and deliver content securely over HTTPS.
+
+If you choose to sign in with Apple or Google, those providers may share limited information with us (such as your name and email address or a private relay email). We do not receive your Apple or Google passwords. Your use of those services is also governed by their respective privacy policies.
+
+Dreamr contains no third-party advertising SDKs and does not use analytics tools that track your activity across other apps or websites.
+
+5. Local Storage and Offline Use
+Dream data (including AI responses and images) may be cached locally on your device to support better performance and offline access.
+
+You can remove this local data by clearing the app’s storage/cache in your device settings or by uninstalling the app. Server-side data is not automatically deleted when you uninstall; see “Data Retention and Deletion” below.
+
+6. Data Retention and Deletion
+Your dreams, AI responses, and account data are stored on our servers until you delete them or delete your account.
+
+- You may delete individual dreams from within the app (where supported).
+- You may request full account and data deletion at any time by contacting us at the email address below.
+
+Some limited information (such as server logs or purchase records) may be retained for a reasonable period as required for security, legal, or accounting purposes.
+
+7. Security
+We use industry-standard security measures, including HTTPS encryption and secure password hashing, to protect your data in transit and at rest.
+
+No method of transmission or storage is 100% secure, but we work to keep your information reasonably safe and limit access to it.
+
+8. Children’s Privacy
+Dreamr is not intended for children under the age of 13. We do not knowingly collect personal information from children under 13.
+
+If you believe we have collected information from a child under 13, please contact us immediately so we can delete it.
+
+9. Changes to This Policy
+We may update this Privacy Policy from time to time. If we make significant changes, we will notify you in the app or via the app store listing.
+
+Your continued use of Dreamr after an update means you accept the revised policy.
+
+10. Contact Information
+If you have questions or concerns about this Privacy Policy or your data, please contact:
+
+Michael Kuriger
+Email: mikekuriger@gmail.com
+Social: @mikekuriger

@@ -8,6 +8,8 @@ import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:dreamr/constants.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:dreamr/screens/privacy_policy_screen.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'dart:io' show Platform;
 
@@ -85,6 +87,24 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ===== Open Privacy Policy =====
+  Future<void> _openPrivacyPolicy() async {
+    const url = 'https://dreamr-us-west-01.zentha.me/static/privacy.html';
+    final uri = Uri.parse(url);
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to open Privacy Policy'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -322,7 +342,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         onPressed: _loading ? null : () => Navigator.pushNamed(context, '/forgot-password'),
                         child: const Text(
                           'Forgot password?',
-                          style: TextStyle(decoration: TextDecoration.underline),
+                          style: TextStyle(
+                            decoration: TextDecoration.underline,
+                            color: Color(0xFFD1B2FF)
+                            ),
                         ),
                       ),
                     ),
@@ -364,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Center(
                 child: Column(
                   children: [
-                    // Google (your SVG image, clickable)
+                    // Google
                     GestureDetector(
                       onTap: _loading ? null : _handleGoogleLogin,
                       child: SvgPicture.asset(
@@ -373,30 +396,51 @@ class _LoginScreenState extends State<LoginScreen> {
                         fit: BoxFit.contain,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // Apple placeholder (disabled for now)
-                    Opacity(
-                      opacity: 0.4,
-                      child: SignInWithAppleButton(
-                        onPressed: () async {
-                          try {
-                            final credential =
-                                await SignInWithApple.getAppleIDCredential(
-                              scopes: [
-                                AppleIDAuthorizationScopes.email,
-                                AppleIDAuthorizationScopes.fullName,
-                              ],
-                            );
-                            // Send credential to your backend to log in / register.
-                            await _handleAppleSignIn(credential);
-                          } catch (e, st) {
-                            // Log error, show snackbar, etc.
-                            debugPrint('Apple sign-in failed: $e\n$st');
-                          }
-                        },
-                        style: SignInWithAppleButtonStyle.black, 
+
+                    const SizedBox(height: 18),
+                    
+                    // Apple (iOS only)
+                    if (Platform.isIOS) 
+                      Center(
+                        child: SizedBox(
+                          height: 48,
+                          width: 225, 
+                          child: SignInWithAppleButton(
+                            onPressed: _loading
+                                ? null
+                                : () async {
+                                    try {
+                                      final credential =
+                                          await SignInWithApple.getAppleIDCredential(
+                                        scopes: [
+                                          AppleIDAuthorizationScopes.email,
+                                          AppleIDAuthorizationScopes.fullName,
+                                        ],
+                                      );
+
+                                      if (!mounted) return;  // <<< mounted check
+
+                                      await _handleAppleSignIn(credential);
+
+                                    } catch (e, st) {
+                                      debugPrint('Apple sign-in failed: $e\n$st');
+
+                                      if (!mounted) return; // <<< mounted check
+
+                                      final msg = e.toString().replaceFirst('Exception: ', '');
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(msg),
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    }
+                                  },
+                            style: SignInWithAppleButtonStyle.white, 
+                            // style: SignInWithAppleButtonStyle.black,
+                          ),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -414,14 +458,38 @@ class _LoginScreenState extends State<LoginScreen> {
                       onPressed: () => Navigator.pushNamed(context, '/register'),
                       child: const Text(
                         'Create account',
-                        style: TextStyle(decoration: TextDecoration.underline),
+                        style: TextStyle(
+                          decoration: TextDecoration.underline,
+                          color: Color(0xFFD1B2FF)
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
               
-              // Subscription promo removed as requested
+              const SizedBox(height: 12),
+
+              // Privacy Policy
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PrivacyPolicyScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Privacy Policy',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
