@@ -339,7 +339,6 @@ class EmailConfirmToken(db.Model):
     used_at = db.Column(db.DateTime, nullable=True)
     user = db.relationship('User')
 
-# models/subscriptions.py
 # --- Subscription plans ---
 class SubscriptionPlan(db.Model):
     __tablename__ = "subscription_plans"
@@ -1645,6 +1644,62 @@ def logout():
     return jsonify({"message": "Logged out"})
 
 
+# Delete user account
+@app.route("/api/delete_account", methods=["POST"])
+@login_required
+def delete_account():
+    user = current_user
+    user_id = user.id
+    user_email = user.email
+    user_name = user.first_name
+    
+    try:
+        # 1) Delete dreams one-by-one so we can archive images
+        dreams = Dream.query.filter_by(user_id=user_id).all()
+        for d in dreams:
+            _archive_dream_images(d)
+            db.session.delete(d)
+            
+        # 2) Delete user-owned data
+        EmailConfirmToken.query.filter_by(user_id=user.id).delete()
+        UserSubscription.query.filter_by(user_id=user.id).delete()
+        UserCredits.query.filter_by(user_id=user.id).delete()
+        PasswordResetToken.query.filter_by(user_id=user.id).delete()
+        LifeEvent.query.filter_by(user_id=user.id).delete()
+        # NOTE: PaymentTransaction is intentionally kept for accounting/audit
+        
+        # 3) Anonymize the user instead of deleting the row
+        #    Make sure email stays unique + non-null.
+        ts = int(time.time())
+        rand = secrets.token_hex(4)  # 8 random hex chars
+
+        user.email = f"Deleted-{user_email}-{ts}-{rand}"
+        user.first_name = f"Deleted-{user_name}"
+        user.birthdate = None
+        user.gender = None
+        user.timezone = None
+        user.language = "en"
+        user.avatar_filename = None
+        user.enable_audio = False
+        user.email_confirmed = False
+
+        # Sever any social login links so they can't be used to log in again
+        user.apple_user_id = None
+
+        # Make password unusable
+        user.password = ""
+
+        db.session.commit()
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Failed to delete account for user_id=%s: %s", user_id, e)
+        return jsonify({"error": "Failed to delete account"}), 500
+
+    # 3) Log out the now-anonymized user
+    logout_user()
+    return jsonify({"success": True}), 200
+        
 
 def call_openai_with_retry(prompt, retries=3, delay=2):
     for attempt in range(retries):
@@ -3376,6 +3431,24 @@ def admin_toggle_dream_hidden(user_id: int, dream_id: int):
         return _admin_redirect(user_id, "Failed to toggle")
 
 # --- Delete dream (with image archival) ---
+def _archive_dream_images(dream):
+    """Move a dream's image/tile into the deleted archive, ignore errors."""
+    if not dream.image_file:
+        return
+
+    try:
+        image_path = os.path.join("static", "images", "dreams", dream.image_file)
+        tile_path = os.path.join("static", "images", "tiles", dream.image_file)
+        archive_dir = os.path.join("static", "images", "deleted")
+        os.makedirs(archive_dir, exist_ok=True)
+
+        for path in (image_path, tile_path):
+            if os.path.exists(path):
+                shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+    except Exception:
+        # Don’t let FS errors kill account deletion
+        pass
+
 @app.post("/admin/users/<int:user_id>/dreams/<int:dream_id>/delete")
 @admin_required
 def admin_delete_dream(user_id: int, dream_id: int):
@@ -3383,17 +3456,7 @@ def admin_delete_dream(user_id: int, dream_id: int):
     if d.user_id != user_id:
         return _admin_redirect(user_id, "Dream does not belong to user")
     try:
-        if d.image_file:
-            try:
-                image_path = os.path.join("static", "images", "dreams", d.image_file)
-                tile_path = os.path.join("static", "images", "tiles", d.image_file)
-                archive_dir = os.path.join("static", "images", "deleted")
-                os.makedirs(archive_dir, exist_ok=True)
-                for path in [image_path, tile_path]:
-                    if os.path.exists(path):
-                        shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
-            except Exception:
-                pass
+        _archive_dream_images(d)
         db.session.delete(d)
         db.session.commit()
         return _admin_redirect(user_id, f"Dream {dream_id} deleted")
