@@ -298,6 +298,18 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     return '✨';                                         // default separator
   }
 
+// Compute origin rect for share sheets (iPad/macOS need an anchor).
+  Rect _shareOrigin() {
+    final size = MediaQuery.of(context).size;
+
+    // Tiny 1×1 rect centered on screen – always valid:
+    return Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: 1,
+      height: 1,
+    );
+  }
+
 // Resolve dream image file for sharing
   Future<File?> _resolveDreamImageFile(Dream d) async {
     final url = d.imageFile;
@@ -339,13 +351,14 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     final shareText = combinedDreamText(d);
     final mime = lookupMimeType(f.path) ?? 'image/jpeg';
     // final origin = _originFromKey(_shareAnchorKey);
+    final origin = _shareOrigin();
 
     await SharePlus.instance.share(
       ShareParams(
         title: d.summary.isNotEmpty ? d.summary : null,
         text: shareText.isNotEmpty ? shareText : null,
         files: [XFile(f.path, mimeType: mime, name: f.uri.pathSegments.last)],
-        // sharePositionOrigin: origin,
+        sharePositionOrigin: origin,
       ),
     );
   }
@@ -363,12 +376,14 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
 
       final mime = lookupMimeType(f.path) ?? 'image/jpeg';
       // final origin = _originFromKey(_shareAnchorKey);
+      final origin = _shareOrigin();
+
 
       await SharePlus.instance.share(
         ShareParams(
           title: d.summary.isNotEmpty ? d.summary : null,
           files: [XFile(f.path, mimeType: mime, name: f.uri.pathSegments.last)],
-          // sharePositionOrigin: origin,
+          sharePositionOrigin: origin,
         ),
       );
     }
