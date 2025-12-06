@@ -71,14 +71,14 @@ class _DreamGalleryScreenState extends State<DreamGalleryScreen> {
     }
 
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       child: GridView.builder(
         itemCount: _dreams.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 24,
-          childAspectRatio: 0.8,
+          crossAxisCount: 3,
+          crossAxisSpacing: 4,
+          mainAxisSpacing: 4,
+          childAspectRatio: 1,
         ),
         itemBuilder: (context, index) {
           final dream = _dreams[index];
@@ -99,7 +99,7 @@ class _DreamGalleryScreenState extends State<DreamGalleryScreen> {
                     );
                   },
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(4),
                       child: DreamImage(
                         dreamId: dream.id,
                         url: dream.imageFile ?? '',

@@ -95,7 +95,7 @@ class _LifeEventsScreenState extends State<LifeEventsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.purple900,
+      backgroundColor: AppColors.purple900,     //  Screen background color
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,7 +119,7 @@ class _LifeEventsScreenState extends State<LifeEventsScreen> {
             ),
           ],
         ),
-        backgroundColor: AppColors.purple950,
+        backgroundColor: AppColors.purple950,     // AppBar background color
         foregroundColor: Colors.white,
         elevation: 4,
         leading: IconButton(
@@ -153,8 +153,20 @@ class _LifeEventsScreenState extends State<LifeEventsScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.45),
+                      color: AppColors.purple950,
+                      // color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.45),  // Semi-transparent black
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF82D9FF), // pick your border color
+                        width: .5,                     // border width
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color.fromARGB(255, 173, 114, 255),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

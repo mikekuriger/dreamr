@@ -9,6 +9,7 @@ import 'package:dreamr/constants.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dreamr/models/dream.dart';
+import 'package:dreamr/theme/colors.dart';
 
 // Custom enum to replace missing CalendarFormat
 enum CalendarFormat { month, week }
@@ -576,13 +577,22 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12), // height of stat box
                   decoration: BoxDecoration(
-                    color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.4),
-                    // color: AppColors.purple850, TOP yellow border
+                    // color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.4),
+                    color: AppColors.black.withAlpha(200),                           // Credits Background
+                    // color: AppColors.purple950, // Dark purple background
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color.fromARGB(255, 170, 153, 1),
-                      width: 2,
+                      color: const Color.fromARGB(255, 255, 230, 7),
+                      // color: const Color.fromARGB(255, 170, 153, 1),
+                      width: 1,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color.fromARGB(255, 130, 217, 255).withValues(alpha: 0.5), // Shadow color with opacity
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -762,12 +772,20 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
               margin: const EdgeInsets.symmetric(vertical: 4),
               padding: const EdgeInsets.all(12),  // calendar box height
               decoration: BoxDecoration(
-                color: Colors.black54,
+                color: AppColors.black.withAlpha(200),                                // Calendar background
+                // color: AppColors.purple950, // Dark purple background
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: Colors.deepPurple.shade300,
                   width: 1.5,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color.fromARGB(255, 130, 217, 255).withValues(alpha: 0.5), // Shadow color with opacity
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

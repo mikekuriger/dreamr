@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+
 class HelpScreen extends StatelessWidget {
   final VoidCallback? onDone;
   
@@ -12,7 +13,7 @@ class HelpScreen extends StatelessWidget {
   Future<void> _launchEmail() async {
     final Uri emailUri = Uri(
       scheme: 'mailto',
-      path: 'support@dreamr.app',
+      path: 'zentha.labs@gmail.com',
       queryParameters: {
         'subject': 'Help with Dreamr App',
       },
@@ -52,6 +53,7 @@ class HelpScreen extends StatelessWidget {
             ),
           ],
         ),
+        // back button
         backgroundColor: AppColors.purple950,
         foregroundColor: Colors.white,
         elevation: 4,
@@ -129,7 +131,8 @@ class HelpScreen extends StatelessWidget {
                 '• Manage your subscription\n'
                 '• Enable or disable features\n'
                 '• Update your password\n'
-                '• Log out of your account',
+                '• Log out of your account\n'
+                '• Delete your account',
             ),
             
             // Dream Credits & Subscriptions Section
@@ -149,7 +152,7 @@ class HelpScreen extends StatelessWidget {
               content: 'Need help with Dreamr? Contact us!\n\n'
                 '• Email: zentha.labs@gmail.com\n'
                 '• Please include your email address and a detailed description of any issues\n'
-                '• I do my best to respond right away, or within 24 hours',
+                '• You will normally get a response within 24 hours',
               hasButton: true,
               buttonText: 'Email Support',
               onButtonPressed: _launchEmail,
@@ -161,10 +164,10 @@ class HelpScreen extends StatelessWidget {
               width: double.infinity,
               alignment: Alignment.center,
               child: const Text(
-                'Dreamr ✨ v1.0.2\n© 2025 Michael Kuriger',
+                'Dreamr ✨ v1.0.2+7\n© 2025 Michael Kuriger',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.black26,
+                  color: Color.fromARGB(128, 122, 209, 255),
                   fontSize: 12,
                 ),
               ),
@@ -186,13 +189,17 @@ class HelpScreen extends StatelessWidget {
   }) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 16),   // Spacing between sections
       decoration: BoxDecoration(
-        color: AppColors.purple900,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.purple950,              // Dark purple background
+        borderRadius: BorderRadius.circular(12),   // Bottom corners rounded
+        border: Border.all(
+          color: const Color(0xFF82D9FF), // pick your border color
+          width: 1.0,                     // border width
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: const Color.fromARGB(255, 130, 217, 255).withValues(alpha: 0.5), // Shadow color with opacity
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -203,26 +210,26 @@ class HelpScreen extends StatelessWidget {
         children: [
           // Section header
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),    // Header thickness
             decoration: BoxDecoration(
-              color: AppColors.purple800,
+              color: AppColors.purple800,       // lighter purple for header
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
+                topLeft: Radius.circular(12),     // Top corners rounded
+                topRight: Radius.circular(12),    // Top corners rounded
               ),
             ),
             child: Row(
               children: [
                 Icon(
                   icon,
-                  color: Colors.white,
+                  color: Colors.white,  // Icon color in headers
                   size: 24,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 12),  // Spacing between icon and title
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color.fromARGB(255, 255, 255, 255),  // Title color in headers
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
@@ -233,14 +240,14 @@ class HelpScreen extends StatelessWidget {
           
           // Section content
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),  // 
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   content,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Colors.white,   // Content text color
                     fontSize: 14,
                     height: 1.5,
                   ),
@@ -253,11 +260,11 @@ class HelpScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: onButtonPressed,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurpleAccent,
+                        backgroundColor: const Color.fromARGB(255, 255, 96, 96),  // Red button color
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(18),
                         ),
                       ),
                       child: Text(

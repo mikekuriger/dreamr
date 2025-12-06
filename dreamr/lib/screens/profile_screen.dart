@@ -4,6 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/state/subscription_model.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dreamr/services/api_service.dart';
+import 'package:dreamr/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ValueNotifier<int> refreshTrigger;
@@ -292,7 +296,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ElevatedButton(
                 onPressed: _changingPassword ? null : _changePassword,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurpleAccent,
+                  backgroundColor: Colors.deepPurpleAccent,          // Change Password Button color
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
@@ -307,6 +311,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
+
+              // const SizedBox(height: 200),
+              
+              // // Delete Account Button
+              // ElevatedButton(
+              //   onPressed: () => _confirmAndDeleteAccount(context),
+              //   style: ElevatedButton.styleFrom(
+              //     backgroundColor: const Color.fromARGB(255, 255, 0, 0),
+              //     foregroundColor: Colors.white,
+              //     shape: RoundedRectangleBorder(
+              //       borderRadius: BorderRadius.circular(30),
+              //     ),
+              //     padding: const EdgeInsets.symmetric(vertical: 14),
+              //   ),
+              //   child: const Text(
+              //     "Delete Account",
+              //     style: TextStyle(
+              //       fontSize: 16,
+              //       fontWeight: FontWeight.bold,
+              //     ),
+              //   ),
+              // ),
+              
+              const SizedBox(height: 200),
+
+              // Delete Account link
+              ListTile(
+                title: const Text(
+                  'Delete Account',
+                  style: TextStyle(color: Colors.red),
+                ),
+                trailing: const Icon(Icons.delete_forever, color: Colors.red),
+                onTap: () => _confirmAndDeleteAccount(context),
+              ),
             ],
           ),
         ),
@@ -314,6 +352,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
   
+  // Delete User Logic
+  final _secure = const FlutterSecureStorage();
+
+  Future<void> _confirmAndDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Delete Account?'),
+          content: const Text(
+            'This will permanently delete your Dreamr account and all associated dreams. '
+            'This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await ApiService.deleteAccount();
+
+      // Clear local state / tokens
+      await _secure.deleteAll();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      if (!context.mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  // Change Password Logic
   Future<void> _changePassword() async {
     // Validate form
     if (_passwordFormKey.currentState?.validate() != true) {
@@ -451,11 +548,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: AppColors.purple950,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF82D9FF), // pick your border color
+                width: .5,                     // border width
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: const Color.fromARGB(255, 173, 114, 255),
                   blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -496,7 +597,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     icon: const Icon(Icons.card_membership, size: 18),
                     label: const Text('Manage Subscription'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurpleAccent,
+                      backgroundColor: const Color.fromARGB(255, 255, 27, 27),  //    Manage Subscription Button color
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -515,11 +616,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: AppColors.purple950,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF82D9FF), // pick your border color
+                width: .5,                     // border width
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
+                  color: const Color.fromARGB(255, 173, 114, 255),
                   blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -628,7 +733,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: ElevatedButton(
                           onPressed: _saveProfile,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurpleAccent,
+                            backgroundColor: Colors.deepPurpleAccent,    // Save Button color
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(30),
@@ -661,11 +766,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             decoration: BoxDecoration(
               color: AppColors.purple950,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF82D9FF), // pick your border color
+                width: .5,                     // border width
+              ),
+
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: const Color.fromARGB(255, 173, 114, 255),
                   blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -679,7 +789,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.purple900,
+      backgroundColor: AppColors.purple900,   // Profile Screen background color
       body: SafeArea(
         bottom: true,
         child: _loading ? _buildLoadingWidget() : _buildProfileContent(),

@@ -183,13 +183,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.all(16),
             margin: const EdgeInsets.only(bottom: 20),
             decoration: BoxDecoration(
-              color: AppColors.purple950,
+              color: AppColors.purple950,        // Settings card background color
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF82D9FF), // pick your border color
+                width: .5,  
+              ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: const Color.fromARGB(255, 173, 114, 255),
                   blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
@@ -416,7 +420,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.purple900,
+      backgroundColor: AppColors.purple900,     // Settings Screen background color
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,7 +444,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
-        backgroundColor: AppColors.purple950,
+        backgroundColor: AppColors.purple950,     // AppBar background color
         foregroundColor: Colors.white,
         elevation: 4,
         leading: IconButton(

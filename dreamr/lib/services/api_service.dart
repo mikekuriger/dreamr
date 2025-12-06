@@ -520,6 +520,23 @@ class ApiService {
     }
   }
 
+  // Delete User Account
+  static Future<void> deleteAccount() async {
+    final res = await DioClient.dio.post(
+      '/api/delete_account',
+      options: Options(validateStatus: (_) => true),
+    );
+
+    if (res.statusCode != 200) {
+      throw Exception(
+        res.data is Map && res.data['error'] != null
+            ? res.data['error']
+            : 'Failed to delete account',
+      );
+    }
+  }
+
+
   // === Notes APIs ===
 
   /// GET /api/dreams/:id/notes
