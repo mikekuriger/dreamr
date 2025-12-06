@@ -31,7 +31,7 @@ from werkzeug.utils import secure_filename
 from zoneinfo import ZoneInfo
 import base64
 import bcrypt
-import hashlib, secrets
+import hashlib, secrets, hmac
 import io
 import json
 import logging
@@ -81,6 +81,15 @@ login_manager = LoginManager(app)
 login_manager.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
+
+# for hashing email addresses after user deletes their account
+# hashed email + any unused credits will be saved but all other data deleted
+# new users will also be hashed and compared to list of hashes for a match
+# if a match is found, user will get their credits restored
+# this is to prevent abuse from users deleting and creating new accounts to get free credits
+SECRET_PEPPER = "mikekuriger@gmail.com".encode("utf-8")
+def hash_string_secret(value: str) -> str:
+    return hmac.new(SECRET_PEPPER, value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 WEB_CLIENT_ID = "846080686597-61d3v0687vomt4g4tl7rueu7rv9qrari.apps.googleusercontent.com"
 IOS_CLIENT_ID = "846080686597-8u85pj943ilkmlt583f3tct5h9ca0c3t.apps.googleusercontent.com"
@@ -1059,61 +1068,148 @@ def api_google_login():
 
     try:
         req = google_requests.Request()
-        # 1) Verify signature & claims, but don't pin the audience yet
         idinfo = id_token.verify_oauth2_token(token, req, audience=None)
 
         aud = idinfo.get("aud")
         azp = idinfo.get("azp")
         iss = idinfo.get("iss")
-        email = idinfo.get("email")
+        email = (idinfo.get("email") or "").strip().lower()
         email_verified = idinfo.get("email_verified", False)
         full_name = idinfo.get("name") or ""
         first_name = full_name.split()[0] if full_name else "Unknown"
 
-        # 2) Strict issuer check
         if iss not in ALLOWED_ISS:
             raise ValueError(f"bad iss: {iss}")
 
-        # 3) Accept Web or iOS client as audience (common on native apps)
         if aud not in ALLOWED_AUDS:
-            # Some Google flows put Web client in azp and iOS in aud — allow either.
             if azp not in ALLOWED_AUDS:
                 raise ValueError(f"bad aud: {aud} azp: {azp}")
 
         if not email or not email_verified:
             raise ValueError("email not verified")
 
-        # 4) Normal login / signup flow
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            user = User(
-                email=email,
-                first_name=first_name,
-                password='',
-                timezone='',
-                email_confirmed=True,
-            )
-            db.session.add(user)
-            db.session.commit()
-        elif not user.email_confirmed:
-            user.email_confirmed = True
-            db.session.commit()
+        # ------------ NORMAL / REACTIVATION FLOW ------------
 
+        # 1) Try real email first (case-insensitive)
+        user = User.query.filter(func.lower(User.email) == email).first()
+
+        if not user:
+            # 2) Try deleted/reactivated user: email stored as hash
+            email_hash = hash_string_secret(email)
+            deleted = User.query.filter(User.email == email_hash).first()
+
+            if deleted:
+                # Reactivate this user in place, keep same id & credits
+                deleted.email = email
+                deleted.first_name = first_name or deleted.first_name
+                deleted.email_confirmed = True
+                # Optionally clear deletion flags if you have them:
+                # deleted.deleted_at = None
+                # deleted.status = "active"
+
+                db.session.commit()
+                user = deleted
+            else:
+                # 3) Truly new user – create fresh
+                user = User(
+                    email=email,
+                    first_name=first_name,
+                    password='',
+                    timezone='',
+                    email_confirmed=True,
+                )
+                db.session.add(user)
+                db.session.commit()
+
+        else:
+            # Existing normal user: ensure confirmed
+            if not user.email_confirmed:
+                user.email_confirmed = True
+                db.session.commit()
+
+        # Log them in (whether new, existing, or reactivated)
         login_user(user)
         return jsonify({"success": True})
 
     except Exception as e:
-        # Optional: peek safe fields for troubleshooting (no full token logging)
         try:
-            logger.info("google login failed: aud=%s azp=%s iss=%s email=%s err=%s",
-                     idinfo.get("aud") if 'idinfo' in locals() else None,
-                     idinfo.get("azp") if 'idinfo' in locals() else None,
-                     idinfo.get("iss") if 'idinfo' in locals() else None,
-                     idinfo.get("email") if 'idinfo' in locals() else None,
-                     e)
+            logger.info(
+                "google login failed: aud=%s azp=%s iss=%s email=%s err=%s",
+                idinfo.get("aud") if 'idinfo' in locals() else None,
+                idinfo.get("azp") if 'idinfo' in locals() else None,
+                idinfo.get("iss") if 'idinfo' in locals() else None,
+                idinfo.get("email") if 'idinfo' in locals() else None,
+                e,
+            )
         except Exception:
             logger.info("google login failed: %s", e)
         return jsonify({"error": "Invalid token, naughty!"}), 400
+
+
+# @app.route('/api/google_login', methods=['POST'])
+# def api_google_login():
+#     data = request.get_json(silent=True) or {}
+#     token = data.get('id_token')
+#     if not token:
+#         return jsonify({"error": "missing id_token"}), 400
+
+#     try:
+#         req = google_requests.Request()
+#         # 1) Verify signature & claims, but don't pin the audience yet
+#         idinfo = id_token.verify_oauth2_token(token, req, audience=None)
+
+#         aud = idinfo.get("aud")
+#         azp = idinfo.get("azp")
+#         iss = idinfo.get("iss")
+#         email = idinfo.get("email")
+#         email_verified = idinfo.get("email_verified", False)
+#         full_name = idinfo.get("name") or ""
+#         first_name = full_name.split()[0] if full_name else "Unknown"
+
+#         # 2) Strict issuer check
+#         if iss not in ALLOWED_ISS:
+#             raise ValueError(f"bad iss: {iss}")
+
+#         # 3) Accept Web or iOS client as audience (common on native apps)
+#         if aud not in ALLOWED_AUDS:
+#             # Some Google flows put Web client in azp and iOS in aud — allow either.
+#             if azp not in ALLOWED_AUDS:
+#                 raise ValueError(f"bad aud: {aud} azp: {azp}")
+
+#         if not email or not email_verified:
+#             raise ValueError("email not verified")
+
+#         # 4) Normal login / signup flow
+#         user = User.query.filter_by(email=email).first()
+#         if not user:
+#             user = User(
+#                 email=email,
+#                 first_name=first_name,
+#                 password='',
+#                 timezone='',
+#                 email_confirmed=True,
+#             )
+#             db.session.add(user)
+#             db.session.commit()
+#         elif not user.email_confirmed:
+#             user.email_confirmed = True
+#             db.session.commit()
+
+#         login_user(user)
+#         return jsonify({"success": True})
+
+#     except Exception as e:
+#         # Optional: peek safe fields for troubleshooting (no full token logging)
+#         try:
+#             logger.info("google login failed: aud=%s azp=%s iss=%s email=%s err=%s",
+#                      idinfo.get("aud") if 'idinfo' in locals() else None,
+#                      idinfo.get("azp") if 'idinfo' in locals() else None,
+#                      idinfo.get("iss") if 'idinfo' in locals() else None,
+#                      idinfo.get("email") if 'idinfo' in locals() else None,
+#                      e)
+#         except Exception:
+#             logger.info("google login failed: %s", e)
+#         return jsonify({"error": "Invalid token, naughty!"}), 400
 
 # helper for Apple verification
 def verify_apple_identity_token(identity_token: str) -> dict:
@@ -1185,6 +1281,9 @@ def verify_apple_identity_token(identity_token: str) -> dict:
 
 
 # Apple Logins on IOS
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+
 @app.route("/api/apple_login", methods=["POST"])
 def apple_login():
     data = request.get_json(silent=True) or {}
@@ -1193,7 +1292,7 @@ def apple_login():
     user_identifier = data.get("user_identifier")
     email = data.get("email")
     full_name = data.get("full_name")
-    first_name = full_name.split()[0] if full_name else "Unknown"
+    first_name = full_name.split()[0] if full_name else ""
 
     if not identity_token:
         return jsonify({"error": "Missing identity token"}), 400
@@ -1227,19 +1326,57 @@ def apple_login():
     if email_from_token and (email_verified is True or email_verified is None):
         email = email_from_token or email
 
+    # Normalize email
+    email = (email or "").strip().lower()
+
+    # ---- USER LOOKUP / REACTIVATION FLOW ----
+
+    user = None
+
     # 1) Try by apple_user_id first
-    user = User.query.filter_by(apple_user_id=apple_user_id).first()
+    if apple_user_id:
+        user = User.query.filter_by(apple_user_id=apple_user_id).first()
 
-    # 2) If no user yet, try merge by email (if Apple gave one)
+        # If this user has a hashed email matching current email, restore it
+        if user and email:
+            email_hash = hash_string_secret(email)
+            if user.email == email_hash:
+                user.email = email
+                user.first_name = first_name or user.first_name
+                user.email_confirmed = True
+
+    # 2) If no user yet, try by real email (case-insensitive)
     if not user and email:
-        user = User.query.filter_by(email=email).first()
+        user = User.query.filter(func.lower(User.email) == email).first()
 
-    # 3) If still no user, create a new one
+    # 3) If still no user, try “deleted” user where email == hash(email)
+    if not user and email:
+        email_hash = hash_string_secret(email)
+        deleted = User.query.filter(User.email == email_hash).first()
+        if deleted:
+            logger.info("Reactivating deleted user via Apple login: %s", email)
+            if first_name:
+                deleted.first_name = first_name
+            else:
+                if deleted.first_name.startswith("Deleted-"):
+                    deleted.first_name = deleted.first_name[len("Deleted-"):]
+            deleted.email = email
+            deleted.email_confirmed = True
+            if not deleted.apple_user_id:
+                deleted.apple_user_id = apple_user_id
+            user = deleted
+
+    # 4) If still no user, create new one
     if not user:
         if not email:
-            # Apple should provide an email (real or relay) on first auth.
-            # If not, we can't safely create an account.
-            return jsonify({"error": "Apple did not provide an email address, try clearing your saved password for Dreamr in Settings/<your account>/Sign in with apple - and try again"}), 400
+            # Apple didn’t provide an email we can trust; we can’t create an account.
+            return jsonify({
+                "error": (
+                    "Apple did not provide an email address, try clearing your "
+                    "saved password for Dreamr in Settings / your account / "
+                    "Sign in with Apple, then try again."
+                )
+            }), 400
 
         user = User(
             apple_user_id=apple_user_id,
@@ -1251,9 +1388,12 @@ def apple_login():
         )
         db.session.add(user)
     else:
-        # Attach Apple ID if we found user by email only
-        if not user.apple_user_id:
+        # If we found user by email, make sure apple_user_id is attached
+        if apple_user_id and not user.apple_user_id:
             user.apple_user_id = apple_user_id
+        # Make sure they’re marked confirmed
+        if not user.email_confirmed:
+            user.email_confirmed = True
 
     try:
         db.session.commit()
@@ -1261,10 +1401,91 @@ def apple_login():
         db.session.rollback()
         return jsonify({"error": "Account conflict, please contact support"}), 400
 
-    # 4) Log the user in (session cookie, same as Google)
+    # 5) Log the user in
     login_user(user)
-
     return jsonify({"success": True}), 200
+
+
+# @app.route("/api/apple_login", methods=["POST"])
+# def apple_login():
+#     data = request.get_json(silent=True) or {}
+#     identity_token = data.get("identity_token")
+#     authorization_code = data.get("authorization_code")  # currently unused
+#     user_identifier = data.get("user_identifier")
+#     email = data.get("email")
+#     full_name = data.get("full_name")
+#     first_name = full_name.split()[0] if full_name else "Unknown"
+
+#     if not identity_token:
+#         return jsonify({"error": "Missing identity token"}), 400
+
+#     # Verify the Apple identity token (signature + iss/aud/exp).
+#     try:
+#         claims = verify_apple_identity_token(identity_token)
+#     except (InvalidTokenError, RuntimeError) as e:
+#         logger.info("Apple login failed token check: %s", e)
+#         return jsonify({"error": "Invalid Apple identity token"}), 400
+#     except Exception:
+#         logger.exception("Apple login unexpected error while verifying token")
+#         return jsonify({"error": "Apple identity token verification failed"}), 400
+
+#     token_sub = claims.get("sub")
+#     if not token_sub:
+#         return jsonify({"error": "Apple identity token missing subject"}), 400
+
+#     # If the client also sent a user_identifier, make sure it matches the token.
+#     if user_identifier and user_identifier != token_sub:
+#         return jsonify({"error": "Apple user id mismatch"}), 400
+
+#     apple_user_id = token_sub
+
+#     email_from_token = claims.get("email")
+#     email_verified = claims.get("email_verified")
+#     if isinstance(email_verified, str):
+#         email_verified = email_verified.lower() == "true"
+
+#     # Prefer the (verified) email from the token, but fall back to payload.
+#     if email_from_token and (email_verified is True or email_verified is None):
+#         email = email_from_token or email
+
+#     # 1) Try by apple_user_id first
+#     user = User.query.filter_by(apple_user_id=apple_user_id).first()
+
+#     # 2) If no user yet, try merge by email (if Apple gave one)
+#     if not user and email:
+#         user = User.query.filter_by(email=email).first()
+
+#     # 3) If still no user, create a new one
+#     if not user:
+#         if not email:
+#             # Apple should provide an email (real or relay) on first auth.
+#             # If not, we can't safely create an account.
+#             return jsonify({"error": "Apple did not provide an email address, try clearing your saved password for Dreamr in Settings/<your account>/Sign in with apple - and try again"}), 400
+
+#         user = User(
+#             apple_user_id=apple_user_id,
+#             email=email,
+#             first_name=first_name,
+#             password='',
+#             timezone='',
+#             email_confirmed=True,
+#         )
+#         db.session.add(user)
+#     else:
+#         # Attach Apple ID if we found user by email only
+#         if not user.apple_user_id:
+#             user.apple_user_id = apple_user_id
+
+#     try:
+#         db.session.commit()
+#     except IntegrityError:
+#         db.session.rollback()
+#         return jsonify({"error": "Account conflict, please contact support"}), 400
+
+#     # 4) Log the user in (session cookie, same as Google)
+#     login_user(user)
+
+#     return jsonify({"success": True}), 200
 
 
 
@@ -1300,7 +1521,28 @@ def register():
         return jsonify({"error": "User already exists"}), 400
 
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Check for deleted (hashed) users (case-insensitive)
+    email_hash = hash_string_secret(email)
+    deleted = User.query.filter(func.lower(User.email) == email_hash).first()
+    if deleted:
+        logger.warning("⚠️ Deleted user registration attempt")
+        
+        # re-enable the deleted user
+        deleted.email = email
+        deleted.password = hashed
+        deleted.first_name = first_name
+        deleted.timezone = timezone_val
+        deleted.signup_date = datetime.utcnow()
+        db.session.commit()
+        db.session.flush()  # ensure user.id is populated
 
+        logger.warning("⚠️ Deleted user registration successful")
+        
+        return jsonify({
+            "message": "Welcome back to your Dreamr✨account"
+        })
+            
     # Create real user immediately
     user = User(
         email=email,
@@ -1663,17 +1905,18 @@ def delete_account():
         # 2) Delete user-owned data
         EmailConfirmToken.query.filter_by(user_id=user.id).delete()
         UserSubscription.query.filter_by(user_id=user.id).delete()
-        UserCredits.query.filter_by(user_id=user.id).delete()
+        # UserCredits.query.filter_by(user_id=user.id).delete()
         PasswordResetToken.query.filter_by(user_id=user.id).delete()
         LifeEvent.query.filter_by(user_id=user.id).delete()
-        # NOTE: PaymentTransaction is intentionally kept for accounting/audit
+        # NOTE: UserCredits and PaymentTransaction is intentionally kept for accounting/audit
         
         # 3) Anonymize the user instead of deleting the row
-        #    Make sure email stays unique + non-null.
-        ts = int(time.time())
-        rand = secrets.token_hex(4)  # 8 random hex chars
+        #    Hash the email so new users can be compared.
+        # ts = int(time.time())
+        # rand = secrets.token_hex(4)  # 8 random hex chars
 
-        user.email = f"Deleted-{user_email}-{ts}-{rand}"
+        # user.email = f"Deleted-{user_email}-{ts}-{rand}"
+        user.email = hash_string_secret(user_email)
         user.first_name = f"Deleted-{user_name}"
         user.birthdate = None
         user.gender = None
