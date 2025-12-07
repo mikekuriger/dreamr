@@ -312,28 +312,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
-              // const SizedBox(height: 200),
-              
-              // // Delete Account Button
-              // ElevatedButton(
-              //   onPressed: () => _confirmAndDeleteAccount(context),
-              //   style: ElevatedButton.styleFrom(
-              //     backgroundColor: const Color.fromARGB(255, 255, 0, 0),
-              //     foregroundColor: Colors.white,
-              //     shape: RoundedRectangleBorder(
-              //       borderRadius: BorderRadius.circular(30),
-              //     ),
-              //     padding: const EdgeInsets.symmetric(vertical: 14),
-              //   ),
-              //   child: const Text(
-              //     "Delete Account",
-              //     style: TextStyle(
-              //       fontSize: 16,
-              //       fontWeight: FontWeight.bold,
-              //     ),
-              //   ),
-              // ),
-              
               const SizedBox(height: 200),
 
               // Delete Account link

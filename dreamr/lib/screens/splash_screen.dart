@@ -2,7 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:dreamr/services/api_service.dart';
-import 'package:dreamr/widgets/main_scaffold.dart';
+// import 'package:dreamr/widgets/main_scaffold.dart';
+import 'package:dreamr/screens/welcome_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dreamr/constants.dart';
 import 'package:provider/provider.dart';
@@ -56,10 +57,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 await _initializeSubscription();
                 
                 if (!mounted) return;
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MainScaffold()),
-                );
+                await navigateToPostLoginDestination(context);
                 return;
               }
             }
@@ -83,10 +81,7 @@ class _SplashScreenState extends State<SplashScreen> {
           await _rescheduleNotifications();
           
           if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainScaffold()),
-          );
+          await navigateToPostLoginDestination(context);
           return;
         } catch (e) {
           // Login failed, fall through to login screen
