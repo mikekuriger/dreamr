@@ -1,5 +1,5 @@
 // screens/subscription_screen.dart
-import 'dart:io';
+// import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/models/subscription.dart';
@@ -62,51 +62,51 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  // Handle subscription cancellation
-  Future<void> _cancelSubscription() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cancel Subscription'),
-        content: const Text(
-          'Are you sure you want to cancel your subscription? '
-          'You will still have access until the end of your billing period.'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('No'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Yes, Cancel'),
-          ),
-        ],
-      ),
-    );
+  // Handle subscription cancellation (this is done by apple/google)
+  // Future<void> _cancelSubscription() async {
+  //   final confirm = await showDialog<bool>(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       title: const Text('Cancel Subscription'),
+  //       content: const Text(
+  //         'Are you sure you want to cancel your subscription? '
+  //         'You will still have access until the end of your billing period.'
+  //       ),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.of(context).pop(false),
+  //           child: const Text('No'),
+  //         ),
+  //         TextButton(
+  //           onPressed: () => Navigator.of(context).pop(true),
+  //           child: const Text('Yes, Cancel'),
+  //         ),
+  //       ],
+  //     ),
+  //   );
     
-    if (confirm == true) {
-      setState(() => _loading = true);
+  //   if (confirm == true) {
+  //     setState(() => _loading = true);
       
-      try {
-        final success = await context.read<SubscriptionModel>().cancelSubscription();
+  //     try {
+  //       final success = await context.read<SubscriptionModel>().cancelSubscription();
         
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                success 
-                  ? 'Subscription cancelled successfully' 
-                  : 'Failed to cancel subscription'
-              ),
-            ),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _loading = false);
-      }
-    }
-  }
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           SnackBar(
+  //             content: Text(
+  //               success 
+  //                 ? 'Subscription cancelled successfully' 
+  //                 : 'Failed to cancel subscription'
+  //             ),
+  //           ),
+  //         );
+  //       }
+  //     } finally {
+  //       if (mounted) setState(() => _loading = false);
+  //     }
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {

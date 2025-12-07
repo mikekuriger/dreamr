@@ -6,7 +6,6 @@ import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/screens/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -26,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _firstName;
   String? _gender;
   DateTime? _birthdate;
+  // ignore: unused_field
   String _subscriptionTier = 'free';
 
   // Password change fields

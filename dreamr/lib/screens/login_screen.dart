@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:dreamr/widgets/main_scaffold.dart';
+// import 'package:dreamr/widgets/main_scaffold.dart';
+import 'package:dreamr/screens/welcome_screen.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:dreamr/constants.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:url_launcher/url_launcher.dart';
+// import 'package:url_launcher/url_launcher.dart';
 import 'package:dreamr/screens/privacy_policy_screen.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'dart:io' show Platform;
@@ -72,11 +73,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-              // Navigate to main scaffold
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),   // <- where user lands upon loggin in - 0=journal, 1=dream entry, 2=gallery, etc.
-              );
+      // Navigate to post-login destination (welcome tour or main scaffold)
+      await navigateToPostLoginDestination(context);
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() => _error = msg);
@@ -90,23 +88,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ===== Open Privacy Policy =====
-  Future<void> _openPrivacyPolicy() async {
-    const url = 'https://dreamr-us-west-01.zentha.me/static/privacy.html';
-    final uri = Uri.parse(url);
+  // // ===== Open Privacy Policy =====
+  // Future<void> _openPrivacyPolicy() async {
+  //   const url = 'https://dreamr-us-west-01.zentha.me/static/privacy.html';
+  //   final uri = Uri.parse(url);
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to open Privacy Policy'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
+  //   if (await canLaunchUrl(uri)) {
+  //     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  //   } else {
+  //     if (!mounted) return;
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(
+  //         content: Text('Unable to open Privacy Policy'),
+  //         behavior: SnackBarBehavior.floating,
+  //       ),
+  //     );
+  //   }
+  // }
 
   // ===== Google login =====
   Future<void> _handleGoogleLogin() async {
@@ -146,11 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      // Navigate to main scaffold
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),
-      );
+      // Navigate to post-login destination (welcome tour or main scaffold)
+      await navigateToPostLoginDestination(context);
     } catch (e) {
       // Handle sign-in errors
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -215,10 +210,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setBool('loggedIn', true);
 
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainScaffold(initialIndex: 0)),
-      );
+      // Navigate to post-login destination (welcome tour or main scaffold)
+      await navigateToPostLoginDestination(context);
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() => _error = msg);
