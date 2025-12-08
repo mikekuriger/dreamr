@@ -11,8 +11,7 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from jwt import InvalidTokenError
-import jwt
+from jwt import InvalidTokenError, PyJWKClient
 from langdetect import detect
 from openai import OpenAI
 from PIL import Image
@@ -40,7 +39,6 @@ import os
 import re
 import requests
 import jwt
-from jwt import PyJWKClient, InvalidTokenError
 import shutil
 import string
 import time
@@ -48,18 +46,15 @@ import traceback
 import uuid
 
 
-logger = logging.getLogger()
+logger = logging.getLogger("dreamr")
 logger.setLevel(logging.INFO)
+logger.handlers.clear()
 
-if os.getenv("LOG_TO_STDOUT", "1") == "1":
-    handler = logging.StreamHandler()
-else:
-    log_dir = os.getenv("LOG_DIR", "/home/mk7193/dreamr")
-    os.makedirs(log_dir, exist_ok=True)
-    handler = logging.FileHandler(os.path.join(log_dir, "dreamr.log"))
-
-handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-logger.addHandler(handler)
+log_dir = "/home/mk7193/dreamr"
+os.makedirs(log_dir, exist_ok=True)
+file_handler = logging.FileHandler(os.path.join(log_dir, "dreamr.log"))
+file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logger.addHandler(file_handler)
 
 
 client = OpenAI()
