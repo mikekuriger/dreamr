@@ -546,7 +546,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
         }
       },
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 0), //  side gap
+        padding: const EdgeInsets.symmetric(horizontal: 5),              //  side gap (width)
         child: ListView.builder(
           padding: EdgeInsets.zero,
           shrinkWrap: widget.embeddedInScrollView,
@@ -562,18 +562,25 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                 .format(dream.createdAt.toLocal());
 
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3), // space between cards
+              padding: const EdgeInsets.symmetric(vertical: 4),         // space between cards
               child: Container(
                 width: double.infinity,
-                padding: EdgeInsets.zero, // no global padding
+                padding: EdgeInsets.zero,                               // no global padding
                 decoration: BoxDecoration(
                   color: toneStyle.background,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(6),               // BORDER settings
                   border: Border.all(
                     // color: toneStyle.text.withValues(alpha: 1),
                     color: Color.fromARGB(255, 81, 255, 241).withValues(alpha: 1),
-                    width: .4,
+                    width: .5,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color.fromARGB(200, 114, 210, 255),
+                      blurRadius: 7,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -605,7 +612,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                     dreamId: dream.id,
                                     url: dream.imageTile,
                                     kind: DreamImageKind.tile,
-                                    width: 52, // tweak as desired
+                                    width: 52,                                  // ICON size
                                     height: 52,
                                     fit: BoxFit.cover,
                                     radius: BorderRadius.zero,

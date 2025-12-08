@@ -101,11 +101,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // to make the profile page pretty
+  // Text decoration for input labels
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
+      labelStyle: const TextStyle(color: Color.fromARGB(255, 250, 250, 112)),
       enabledBorder: const OutlineInputBorder(
         borderSide: BorderSide(color: Colors.white54),
         borderRadius: BorderRadius.all(Radius.circular(12)),
@@ -179,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha: 0.05),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _currentPasswordVisible ? Icons.visibility : Icons.visibility_off,
@@ -218,7 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha: 0.05),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _newPasswordVisible ? Icons.visibility : Icons.visibility_off,
@@ -267,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.all(Radius.circular(12)),
                   ),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha :0.05),
                   suffixIcon: IconButton(
                     icon: Icon(
                       _confirmPasswordVisible ? Icons.visibility : Icons.visibility_off,

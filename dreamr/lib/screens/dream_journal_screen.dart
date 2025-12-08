@@ -564,7 +564,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
             // Stats section - only show if preference is enabled
             if (_showStatsSection)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),            // dreams logged/stats size
               child: GestureDetector(
                 onTap: () {
                   setState(() {
@@ -769,7 +769,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
             // Calendar section - only show if preference is enabled
             if (_showCalendarSection)
             Container(
-              margin: const EdgeInsets.symmetric(vertical: 4),
+              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 5),           // Calendar size
               padding: const EdgeInsets.all(12),  // calendar box height
               decoration: BoxDecoration(
                 color: AppColors.black.withAlpha(200),                                // Calendar background
