@@ -246,20 +246,20 @@ class _ImageViewerScreenState extends State<ImageViewerScreen> {
               ),
               const SizedBox(width: 12),
   // Share button
-              ElevatedButton.icon(
+              ElevatedButton(
                 key: _shareButtonKey,
                 onPressed: () => _showShareOptions(
                   widget.dreams[_currentIndex],
                 ),
-                icon: const Icon(Icons.share),
-                label: const Text('Share'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color.fromARGB(255, 75, 3, 143),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
+                  padding: const EdgeInsets.all(10), // tweak size if needed
                 ),
+                child: const Icon(Icons.share),
               ),
             ],
           ),

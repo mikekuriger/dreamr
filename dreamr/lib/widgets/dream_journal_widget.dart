@@ -952,16 +952,16 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                                 Icon(Icons.share,
                                                     size: 16,
                                                     color: Colors.white),
-                                                SizedBox(width: 6),
-                                                Text(
-                                                  'Share ✨',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight:
-                                                        FontWeight.w600,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
+                                                // SizedBox(width: 6),
+                                                // Text(
+                                                //   'Share ✨',
+                                                //   style: TextStyle(
+                                                //     fontSize: 13,
+                                                //     fontWeight:
+                                                //         FontWeight.w600,
+                                                //     color: Colors.white,
+                                                //   ),
+                                                // ),
                                               ],
                                             ),
                                           ),
