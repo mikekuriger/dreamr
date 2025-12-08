@@ -158,17 +158,38 @@ class HelpScreen extends StatelessWidget {
               onButtonPressed: _launchEmail,
             ),
             
-            // Version Information
-            Container(
-              margin: const EdgeInsets.only(top: 30, bottom: 40),
-              width: double.infinity,
-              alignment: Alignment.center,
-              child: const Text(
-                'Dreamr ✨ v1.0.2+7\n© 2025 Michael Kuriger',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color.fromARGB(128, 122, 209, 255),
-                  fontSize: 12,
+            // Version Information and EULA
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 30), // distance from screen bottom
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Dreamr ✨ v1.0.2+7\n© 2025 Michael Kuriger',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color.fromARGB(128, 122, 209, 255),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6), // space between version and EULA
+                    InkWell(
+                      onTap: () => launchUrl(Uri.parse(
+                          'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')),
+                      child: const Text(
+                        'Terms of Use (EULA)',
+                        style: TextStyle(
+                          color: Color.fromARGB(255, 122, 209, 255),
+                          fontSize: 12,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Color.fromARGB(255, 122, 209, 255),
+                          decorationThickness: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
