@@ -214,21 +214,6 @@ class HelpScreen extends StatelessWidget {
                         ),
                       ],
                     )
-
-                    // InkWell(
-                    //   onTap: () => launchUrl(Uri.parse(
-                    //       'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')),
-                    //   child: const Text(
-                    //     'Terms of Use',
-                    //     style: TextStyle(
-                    //       color: Color.fromARGB(255, 122, 209, 255),
-                    //       fontSize: 12,
-                    //       // decoration: TextDecoration.underline,
-                    //       // decorationColor: Color.fromARGB(255, 122, 209, 255),
-                    //       // decorationThickness: 1.5,
-                    //     ),
-                    //   ),
-                    // ),
                   ],
                 ),
               ),
