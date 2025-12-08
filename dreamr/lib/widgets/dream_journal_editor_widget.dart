@@ -160,7 +160,8 @@ class DreamJournalEditorWidgetState extends State<DreamJournalEditorWidget> {
                   IconButton(
                     icon: Icon(
                       dream.hidden ? Icons.visibility_off : Icons.visibility,
-                      color: const Color.fromARGB(255, 0, 0, 0),
+                      // color: const Color.fromARGB(255, 255, 255, 255),
+                      color: toneStyle.text,
                     ),
                     onPressed: () async {
                       try {
@@ -184,7 +185,8 @@ class DreamJournalEditorWidgetState extends State<DreamJournalEditorWidget> {
                     },
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete, color: Color.fromARGB(255, 0, 0, 0)),
+                    // icon: const Icon(Icons.delete, color: Color.fromARGB(255, 0, 0, 0)),
+                    icon: Icon(Icons.delete, color: toneStyle.text),
                     color: toneStyle.text,
                     tooltip: "Delete",
                     onPressed: () async {
