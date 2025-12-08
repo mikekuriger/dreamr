@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from sqlalchemy import select, update, and_, text as sqltext
-# from app import db, UserCredits  # adjust import to your layout
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 PT = ZoneInfo("America/Los_Angeles")
 WEEKLY_TEXT_QUOTA = 2
@@ -29,21 +29,63 @@ def _models():
     from app import db, UserCredits
     return db, UserCredits
 
-def get_or_create_credits(user_id: int) -> "UserCredits":
+def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
     db, UserCredits = _models()
-    uc = UserCredits.query.get(user_id)
-    if uc:
-        return uc
-    anchor = _pt_week_anchor(datetime.utcnow())
-    uc = UserCredits(
-        user_id=user_id,
-        text_remaining_week=WEEKLY_TEXT_QUOTA,
-        image_remaining_lifetime=3,
-        week_anchor_utc=anchor
-    )
-    db.session.add(uc)
-    db.session.commit()
-    return uc
+
+    for attempt in range(max_retries):
+        try:
+            # Fast path: already exists
+            uc = UserCredits.query.get(user_id)
+            if uc:
+                return uc
+
+            # Create new credits row
+            anchor = _pt_week_anchor(datetime.utcnow())
+            uc = UserCredits(
+                user_id=user_id,
+                text_remaining_week=WEEKLY_TEXT_QUOTA,
+                image_remaining_lifetime=3,
+                week_anchor_utc=anchor,
+            )
+            db.session.add(uc)
+            db.session.commit()
+            return uc
+
+        except IntegrityError:
+            # Most likely: another transaction inserted the row first
+            db.session.rollback()
+            uc = UserCredits.query.get(user_id)
+            if uc:
+                return uc
+            # If still nothing, something else is wrong
+            raise
+
+        except OperationalError as e:
+            db.session.rollback()
+            # MariaDB/MySQL deadlock = 1213
+            orig = getattr(e, "orig", None)
+            code = orig.args[0] if (orig and getattr(orig, "args", None)) else None
+            if code == 1213 and attempt < max_retries - 1:
+                # Retry the loop
+                continue
+            raise
+
+
+# def get_or_create_credits(user_id: int) -> "UserCredits":
+#     db, UserCredits = _models()
+#     uc = UserCredits.query.get(user_id)
+#     if uc:
+#         return uc
+#     anchor = _pt_week_anchor(datetime.utcnow())
+#     uc = UserCredits(
+#         user_id=user_id,
+#         text_remaining_week=WEEKLY_TEXT_QUOTA,
+#         image_remaining_lifetime=3,
+#         week_anchor_utc=anchor
+#     )
+#     db.session.add(uc)
+#     db.session.commit()
+#     return uc
 
 def ensure_week_current(user_id: int) -> "UserCredits":
     db, UserCredits = _models()

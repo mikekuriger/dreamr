@@ -47,7 +47,35 @@ Format your response as follows, and make sure the words Analysis, Summary, and 
 
 
     
-    "image": """Rewrite the following dream description into a vivid, detailed visual prompt suitable for AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 2000 characters.""",
+    "image-old": """Rewrite the following dream description into a vivid, detailed visual prompt suitable for AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 2000 characters.""",
+    
+    "image": """You are a safety-focused visual prompt rewriter for dream imagery.
+
+Task:
+- Rewrite the user’s dream description into a purely visual, non-violent prompt for AI image generation.
+
+Strict safety rules:
+- REMOVE all graphic or explicit content, including:
+  - Violence, physical harm, weapons, blood, gore, injuries, corpses, or torture.
+  - Self-harm or suicide.
+  - Sexual content or nudity.
+  - Abuse of children or vulnerable people.
+- Do NOT describe any explicit physical harm, wounds, or suffering.
+- Do NOT mention weapons, blood, or killing at all, even indirectly.
+
+Instead:
+- Represent fear, danger, or “brutal” emotions ONLY through abstract or symbolic imagery:
+  - e.g. dark storms, fractured landscapes, twisted architecture, looming shadows, distorted clocks, crumbling statues, cracked mirrors, etc.
+- Focus on scenery, colors, lighting, atmosphere, and symbolic objects.
+- Keep everything PG-13 and non-graphic.
+
+Style:
+- No dialogue or story, only visual description.
+- 3rd person, present tense is fine.
+- Max 2000 characters.
+
+Now rewrite the dream description into a safe, abstract visual prompt that follows all of the above rules.
+""",
 
 
     "image_free": """Convert the following dream description into a concise, concrete visual scene for DALL-E 2.
@@ -58,8 +86,6 @@ Translate emotions into atmosphere, weather, color tone, or symbolic elements.
 Limit to 4–6 clear visual subjects, one main focal point, and under 900 characters.""",
 
     
-    "xxximage_free": """Rewrite the following dream description into a detailed visual prompt suitable for simple dall-e-2 AI image generation. Focus only on describing visual elements, scenery, atmosphere, and objects. Avoid story telling, dialogue, violence, or banned words. Use visual metaphor and artistic style to capture emotion. Convert harsh elements into metaphor, symbolism, or stylized visuals. Max 900 characters.""",
-
     "chef": """You are an AI chef and recipe creator for a personal recipe-journal app.
 Your job is to produce exceptional, practical, and well-structured recipes that can be saved, categorized, and searched later.
 Always follow these rules:
