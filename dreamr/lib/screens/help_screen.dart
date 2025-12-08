@@ -170,25 +170,65 @@ class HelpScreen extends StatelessWidget {
                       'Dreamr ✨ v1.0.2+7\n© 2025 Michael Kuriger',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color.fromARGB(128, 122, 209, 255),
+                        color: Color.fromARGB(200, 122, 209, 255),
                         fontSize: 12,
                       ),
                     ),
-                    const SizedBox(height: 6), // space between version and EULA
-                    InkWell(
-                      onTap: () => launchUrl(Uri.parse(
-                          'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')),
-                      child: const Text(
-                        'Terms of Use (EULA)',
-                        style: TextStyle(
-                          color: Color.fromARGB(255, 122, 209, 255),
-                          fontSize: 12,
-                          decoration: TextDecoration.underline,
-                          decorationColor: Color.fromARGB(255, 122, 209, 255),
-                          decorationThickness: 1.5,
+
+                    const SizedBox(height: 0),              // space between version and EULA
+                    
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => launchUrl(Uri.parse(
+                              'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')),
+                          child: const Text(
+                            'Terms of Use',
+                            style: TextStyle(
+                              color: Color.fromARGB(255, 122, 209, 255),
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          '|',
+                          style: TextStyle(
+                            color: Color.fromARGB(200, 122, 209, 255),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => launchUrl(Uri.parse(
+                              'https://dreamr-us-west-01.zentha.me/static/privacy.html')),
+                          child: const Text(
+                            'Privacy Policy',
+                            style: TextStyle(
+                              color: Color.fromARGB(255, 122, 209, 255),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+
+                    // InkWell(
+                    //   onTap: () => launchUrl(Uri.parse(
+                    //       'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')),
+                    //   child: const Text(
+                    //     'Terms of Use',
+                    //     style: TextStyle(
+                    //       color: Color.fromARGB(255, 122, 209, 255),
+                    //       fontSize: 12,
+                    //       // decoration: TextDecoration.underline,
+                    //       // decorationColor: Color.fromARGB(255, 122, 209, 255),
+                    //       // decorationThickness: 1.5,
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),
