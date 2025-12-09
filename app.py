@@ -47,7 +47,8 @@ import uuid
 
 
 logger = logging.getLogger("dreamr")
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 logger.handlers.clear()
 
 log_dir = "/home/mk7193/dreamr"
@@ -422,8 +423,8 @@ class UserCredits(db.Model):
     __tablename__ = "user_credits"
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
-    text_remaining_week = db.Column(db.Integer, nullable=False, default=2)
-    image_remaining_lifetime = db.Column(db.Integer, nullable=False, default=3)
+    text_remaining_week = db.Column(db.Integer, nullable=False, default=3)                # free text
+    image_remaining_lifetime = db.Column(db.Integer, nullable=False, default=0)            # free image
     week_anchor_utc = db.Column(db.DateTime, nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -2216,6 +2217,39 @@ def _strip_trailing_type_block(text: str) -> str:
         return text.rsplit("Type:", 1)[0].rstrip()
     return text
 
+# look for bad entry before sending to AI
+MIN_CHARS = 20   
+MIN_WORDS = 4
+
+def is_mostly_noise(text: str) -> bool:
+    t = text.strip()
+    if not t:
+        return True
+
+    # % of characters that are letters/digits
+    import string
+    valid_chars = sum(1 for c in t if c.isalnum())
+    noise_ratio = 1 - (valid_chars / max(len(t), 1))
+    if noise_ratio > 0.6:  # >60% non-alnum = emoji/symbol spam
+        return True
+
+    # all same character like "aaaaaa" or "111111"
+    if len(set(t)) <= 2:
+        return True
+
+    return False
+
+def validate_dream_text(dream_text: str) -> tuple[bool, str]:
+    t = (dream_text or "").strip()
+    if not t:
+        return False, "Please describe your dream in a sentence or two.  The more detail, the better."
+    if len(t) < MIN_CHARS or len(t.split()) < MIN_WORDS:
+        return False, "Please add a bit more detail about your dream (at least a few words). The more detail, the better."
+    if is_mostly_noise(t):
+        return False, "That doesn't look like a dream. Try typing a short description instead."
+    return True, ""
+
+
 
 # dream analysis
 @app.route("/api/chat", methods=["POST"])
@@ -2233,11 +2267,16 @@ def chat():
     # Check if user is using a free plan, and update counts
     decremented_text = False
     is_pro = _user_is_pro(current_user.id)
-    
+
+    if is_pro:
+        logger.debug(f"User is Pro")
+    else:
+        logger.debug(f"User is Free")
 
     try:
         if not is_pro:
             ok, reset_iso = decrement_text_or_deny(current_user.id)
+            
             if not ok:
                 return jsonify({"error": "quota_exhausted", "kind": "text", "next_reset_iso": reset_iso}), 402
             decremented_text = True
@@ -2252,6 +2291,23 @@ def chat():
         db.session.add(dream)
         db.session.commit()
         logger.debug(f"Dream saved with ID: {dream.id}")
+
+        # Check user input for length, reject if too short
+        logger.debug("[WARN] Validate input.")
+        ok, err = validate_dream_text(message)
+        if not ok:
+            logger.debug(f"[WARN] Invalid input - {err}")
+            dream.summary  =  "Non-dream entry"
+            dream.is_question = False
+            dream.hidden   = True
+            db.session.commit()
+            
+            return jsonify({
+                "dream_id": dream.id,
+                "analysis": err,
+                "is_question": False,
+                "should_generate_image": False,
+            }), 200
         
         q = "pro" if is_pro else "simple"
         
@@ -2259,7 +2315,7 @@ def chat():
         dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
         logger.info(f"Sending {q} prompt to OpenAI")
-        logger.debug(f"Dream Analysis Prompt: {prompt}")
+        # logger.debug(f"Dream Analysis Prompt: {prompt}")
 
         response = call_openai_with_retry(prompt)
         if not getattr(response, "choices", None) or not response.choices[0].message:
@@ -2294,22 +2350,32 @@ def chat():
             end   = len(content) if end_idx == -1 else end_idx
             return content[start:end].strip()
         
+        
         # 1) Analysis = between Analysis and Summary
         analysis = slice_between(ANALYSIS_MARK, iA, iS)
+        # logger.debug(f"Analysis: {analysis}")
+        logger.debug(f"Analysis: <snip>")
+        
         
         # 2) Summary = between Summary and Tone (if Tone exists) else up to Type else to end
         summary_end_idx = iT if iT != -1 else (iY if iY != -1 else -1)
         summary = slice_between(SUMMARY_MARK, iS, summary_end_idx)
+        logger.debug(f"Summary: {summary}")
+        
         
         # 3) Tone = between Tone and Type (if Type exists) else to end; keep only first line
         tone_block = slice_between(TONE_MARK, iT, iY)
         tone = tone_block.splitlines()[0].strip().rstrip(string.punctuation) if tone_block else None
+        logger.debug(f"Tone: {tone}")
+        
         
         # 4) Type = whatever comes after Type marker (used for routing, not rendered)
         type_val = slice_between(TYPE_MARK, iY, -1)
         tv = (type_val or "").strip().lower()
         is_question = tv.startswith("question")
         is_nonsense = tv.startswith("decline")
+        logger.debug(f"Type: {tv}")
+        
         
         # 5) Fallbacks:
         # If no Analysis/Summary/Tone were found at all, show the model text minus any 'Type:' lines
@@ -2319,7 +2385,8 @@ def chat():
                 if not ln.strip().lower().startswith(("**type:**", "type:"))
             ).strip()
             analysis = content_without_type or content
-
+            logger.debug(f"Not Dream: {analysis}")
+            
 
         logger.debug(f"[parsed] is_question={is_question} is_nonsense={is_nonsense} tone={tone} summary_present={bool(summary)}")
 
@@ -2329,7 +2396,7 @@ def chat():
             # but strip trailing "Type:" so the user never sees it.
             def _strip_trailing_type_block(text: str) -> str:
                 if not text: 
-                    return text
+                    return "That doesn't look like a dream. Try typing a short description instead."
                 if "**Type:**" in text:
                     return text.rsplit("**Type:**", 1)[0].rstrip()
                 if "Type:" in text:
