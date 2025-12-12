@@ -55,7 +55,7 @@ android {
         //targetSdk = flutter.targetSdkVersion
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 1                         // also change in pubspec.yaml
+        versionCode = 9                         // also change in pubspec.yaml
         versionName = "1.0.3"                   // also change in pubspec.yaml
     }
 

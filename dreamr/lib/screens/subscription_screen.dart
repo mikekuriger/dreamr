@@ -88,7 +88,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
       }
 
       await model.refresh();
-      
+
     } finally {
       if (mounted) setState(() => _loading = false);
     }
