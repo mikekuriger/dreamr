@@ -366,7 +366,8 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
                   child: ElevatedButton(
                     onPressed: _submitting ? null : _onSaveProfile,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color.fromARGB(255, 255, 0, 0),
+                      // backgroundColor: const Color.fromARGB(255, 255, 0, 0),
+                      backgroundColor: AppColors.purple600,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),

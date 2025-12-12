@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "728366442762",
+    "project_id": "dreamr-65125",
+    "storage_bucket": "dreamr-65125.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:728366442762:android:ae12f5a00104f297e072f3",
+        "android_client_info": {
+          "package_name": "me.zentha.dreamr"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8eU3KMGLWOqHqpi4kvAFj2R4cwxvzV0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

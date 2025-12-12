@@ -17,16 +17,41 @@ class SubscriptionScreen extends StatefulWidget {
   State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> {
+class _SubscriptionScreenState extends State<SubscriptionScreen> 
+    with WidgetsBindingObserver {
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Start observing app lifecycle
+    WidgetsBinding.instance.addObserver(this);
+
     // Refresh subscription data when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<SubscriptionModel>().refresh();
     });
+  }
+
+  @override
+  void dispose() {
+    // Stop observing lifecycle
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (!mounted) return;
+
+    // When returning from App Store / browser, refresh status
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('SUB UI: app resumed, refreshing subscription status...');
+      context.read<SubscriptionModel>().refresh();
+    }
   }
 
   // Format currency based on price
@@ -37,18 +62,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   // Handle subscription purchase
   Future<void> _subscribe(SubscriptionPlan plan) async {
-    // Log immediately when the user taps Subscribe so we know the button handler fired
     debugPrint('SUB UI: subscribe tapped for plan=${plan.id}');
 
     setState(() => _loading = true);
+
+    final model = context.read<SubscriptionModel>();
     
     try {
-      final result = await context.read<SubscriptionModel>().subscribe(plan);
+      final result = await model.subscribe(plan);
+      // final result = await context.read<SubscriptionModel>().subscribe(plan);
       
       if (result != null && result.containsKey('payment_url')) {
         final url = result['payment_url'] as String;
-        if (await canLaunchUrl(Uri.parse(url))) {
-          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        final uri = Uri.parse(url);
+
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
         } else {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -57,156 +86,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           }
         }
       }
+
+      await model.refresh();
+      
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-// Build the subscription screen UI
-  // @override
-  // Widget build(BuildContext context) {
-  //   return Scaffold(
-  //     backgroundColor: AppColors.purple950,  // overall screen background color
-  //     // backgroundColor: AppColors.purple900,  // overall screen background color
-  //     appBar: AppBar(
-  //       title: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.start,
-  //         children: const [
-  //           Text(
-  //             "Dreamr ✨ Subscription",
-  //             style: TextStyle(
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //               color: Colors.white,
-  //             ),
-  //           ),
-  //           SizedBox(height: 2),
-  //           Text(
-  //             "Unlock all features with a premium plan",
-  //             style: TextStyle(
-  //               fontSize: 11,
-  //               fontStyle: FontStyle.italic,
-  //               color: Color(0xFFD1B2FF),
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //       backgroundColor: AppColors.purple950,
-  //       foregroundColor: Colors.white,
-  //       elevation: 4,
-  //       leading: IconButton(
-  //         icon: const Icon(Icons.arrow_back),
-  //         onPressed: () {
-  //           widget.onDone?.call();
-  //           Navigator.of(context).pop();
-  //         },
-  //       ),
-  //     ),
-  //     body: Consumer<SubscriptionModel>(
-  //       builder: (context, model, child) {
-  //         if (model.loading) {
-  //           return const Center(child: CircularProgressIndicator());
-  //         }
-          
-  //         if (model.error != null) {
-  //           return Center(
-  //             child: Column(
-  //               mainAxisAlignment: MainAxisAlignment.center,
-  //               children: [
-  //                 Text(
-  //                   'Error: ${model.error}',
-  //                   style: const TextStyle(color: Colors.white),
-  //                   textAlign: TextAlign.center,
-  //                 ),
-  //                 const SizedBox(height: 16),
-  //                 ElevatedButton(
-  //                   onPressed: () => model.refresh(),
-  //                   child: const Text('Retry'),
-  //                 ),
-  //               ],
-  //             ),
-  //           );
-  //         }
-          
-  //         return SingleChildScrollView(
-  //           padding: const EdgeInsets.all(16),
-  //           child: Column(
-  //             crossAxisAlignment: CrossAxisAlignment.start,
-  //             children: [
-  //                 // Current subscription status
-  //                 _buildCurrentSubscription(model.status),
-                  
-  //                 // Restore purchases button (Google Play / App Store)
-  //                 ...[
-  //                   const SizedBox(height: 12),
-  //                   Center(
-  //                     child: TextButton(
-  //                       onPressed: model.loading ? null : () async {
-  //                         final success = await model.restorePurchases();
-  //                         if (mounted) {
-  //                           ScaffoldMessenger.of(context).showSnackBar(
-  //                             SnackBar(
-  //                               content: Text(
-  //                                 success 
-  //                                   ? 'Purchases restored successfully' 
-  //                                   : 'Failed to restore purchases'
-  //                               ),
-  //                             ),
-  //                           );
-  //                         }
-  //                       },
-  //                       child: Text(
-  //                         'Restore Purchases',
-  //                         style: TextStyle(
-  //                           color: model.loading ? Colors.grey : Colors.amber,
-  //                           decoration: TextDecoration.underline,
-  //                         ),
-  //                       ),
-  //                     ),
-  //                   ),
-  //                 ],
-                  
-  //                 const SizedBox(height: 24),
-                
-  //               // Available plans
-  //               const Text(
-  //                 'Available Plans',
-  //                 style: TextStyle(
-  //                   color: Colors.white,
-  //                   fontSize: 20,
-  //                   fontWeight: FontWeight.bold,
-  //                 ),
-  //               ),
-                
-  //               const SizedBox(height: 16),
-                
-  //               // Plan cards (excluding free plans)
-  //               ...model.plans
-  //                   .where((plan) => plan.id != 'trial_5day')
-  //                   .map((plan) => _buildPlanCard(
-  //                         plan,
-  //                         model.status,
-  //                       )),
-                
-  //               // Show a message if no plans are available
-  //               if (model.plans.isEmpty)
-  //                 const Center(
-  //                   child: Padding(
-  //                     padding: EdgeInsets.all(16),
-  //                     child: Text(
-  //                       'No subscription plans available at the moment.',
-  //                       style: TextStyle(color: Colors.white70),
-  //                       textAlign: TextAlign.center,
-  //                     ),
-  //                   ),
-  //                 ),
-  //             ],
-  //           ),
-  //         );
-  //       },
-  //     ),
-  //   );
-  // }
   @override
   Widget build(BuildContext context) {
     return Scaffold(

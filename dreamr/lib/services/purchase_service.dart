@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
-import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+// import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 import 'package:dreamr/services/api_service.dart';
 
 /// Service for handling in-app purchases and subscriptions
@@ -93,11 +93,23 @@ class PurchaseService {
   /// Purchase a subscription
   Future<bool> purchaseSubscription(ProductDetails product) async {
     if (_purchasePending) {
+      debugPrint('IAP: purchase already pending, ignoring new request');
+      return false;
+    }
+
+    if (!_isAvailable) {
+      _error = 'Store is not available';
+      debugPrint('IAP: store not available, cannot start purchase');
       return false;
     }
 
     try {
       _purchasePending = true;
+
+      debugPrint(
+        'IAP: starting purchase for product=${product.id} '
+        'on ${Platform.isIOS ? "iOS" : (Platform.isAndroid ? "Android" : "other")}',
+      );
       
       final PurchaseParam purchaseParam = PurchaseParam(
         productDetails: product,
@@ -105,12 +117,35 @@ class PurchaseService {
       );
 
       // Start the purchase flow (subscriptions are non-consumable on both platforms)
+      // On both iOS and Android, this initiates the purchase UI.
+      // The *actual* result comes back via purchaseStream -> _listenToPurchaseUpdated.
       await _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-      
+
+      // At this point we only know the flow was started successfully.
+      // We keep _purchasePending = true until we get a callback.
       return true;
     } catch (e) {
+      // Failed to even start the flow
       _error = 'Failed to purchase: $e';
+      debugPrint('IAP: error starting purchase: $e');
+
       _purchasePending = false;
+
+      // On iOS, this very often means:
+      // - user canceled, OR
+      // - user already owns the subscription.
+      if (Platform.isIOS) {
+        debugPrint(
+          'IAP(iOS): purchase did not start; attempting restorePurchases() '
+          'to sync any existing subscriptions for this Apple ID.',
+        );
+        try {
+          await restorePurchases();
+        } catch (restoreError) {
+          debugPrint('IAP(iOS): restorePurchases also failed: $restoreError');
+        }
+      }
+      
       return false;
     }
   }
@@ -137,10 +172,9 @@ class PurchaseService {
         final response = await androidAddition.queryPastPurchases();
 
         debugPrint(
-          'IAP: restorePurchases(android) found: ' +
-              response.pastPurchases
+          'IAP: restorePurchases(android) found: ${response.pastPurchases
                   .map((p) => '${p.productID}:${p.status}')
-                  .join(', '),
+                  .join(', ')}',
         );
 
         for (final pastPurchase in response.pastPurchases) {
@@ -165,10 +199,9 @@ class PurchaseService {
   /// Listen to purchase updates
   void _listenToPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
     debugPrint(
-      'SUB LIST: ' +
-          purchaseDetailsList
+      'SUB LIST: ${purchaseDetailsList
               .map((p) => '${p.productID}:${p.status}')
-              .join(', '),
+              .join(', ')}',
     );
     for (final purchaseDetails in purchaseDetailsList) {
       if (purchaseDetails.status == PurchaseStatus.pending) {
@@ -194,34 +227,43 @@ class PurchaseService {
   /// Verify the purchase with the backend
   Future<void> _verifyPurchase(PurchaseDetails purchaseDetails) async {
     try {
-      // Extract receipt data based on platform
       String? receipt;
-      String? productId = purchaseDetails.productID;
-      
+      final String productId = purchaseDetails.productID;
+
       if (Platform.isIOS) {
-        // Use the correct method for iOS receipt retrieval
-        // The receipt is already available in the verification data
+        // For StoreKit 2, serverVerificationData is the JWS meant for your server.
         receipt = purchaseDetails.verificationData.localVerificationData;
+        // Google Play purchase token – used with Google Play Developer API.
       } else if (Platform.isAndroid) {
         receipt = purchaseDetails.verificationData.serverVerificationData;
       }
-      
-      if (receipt != null && productId != null) {
-        // Send to backend for verification
-        final provider = Platform.isIOS
-            ? 'apple'
-            : (Platform.isAndroid ? 'google' : null);
+
+      if (receipt != null) {
+        final provider =
+            Platform.isIOS ? 'apple' : (Platform.isAndroid ? 'google' : null);
+
+        debugPrint(
+          'IAP: sending to backend provider=$provider product=$productId '
+          'receipt=${receipt.substring(0, 40)}...',
+        );
 
         await ApiService.initiateSubscription(
           productId,
           paymentProvider: provider,
           receiptData: receipt,
         );
+      } else {
+        debugPrint(
+          'IAP: missing receipt or productId for ${purchaseDetails.productID} '
+          'on ${Platform.isIOS ? "iOS" : "Android"}',
+        );
       }
     } catch (e) {
       _error = 'Failed to verify purchase: $e';
+      debugPrint('IAP: _verifyPurchase error: $e');
     }
   }
+
 
   /// Dispose of resources
   void dispose() {

@@ -232,12 +232,27 @@ class ApiService {
       if (receiptData != null) 'receipt_data': receiptData,
     };
 
-    final res = await DioClient.dio.post(
-      '/api/subscription/purchase',
-      data: payload,
-      options: Options(validateStatus: (status) => status == 200),
-    );
-    return Map<String, dynamic>.from(res.data);
+    try {
+      final res = await DioClient.dio.post(
+        '/api/subscription/purchase',
+        data: payload,
+        // Accept any status < 500 so we can inspect errors instead of throwing
+        options: Options(validateStatus: (status) => status != null && status < 500),
+      );
+
+      if (res.statusCode != 200) {
+        // Log and bubble a controlled error
+        final data = res.data;
+        debugPrint(
+            'SUB: backend returned ${res.statusCode}: ${data is Map ? data['error'] : data}');
+        throw Exception('Subscription initiate failed: HTTP ${res.statusCode}');
+      }
+
+      return Map<String, dynamic>.from(res.data);
+    } on DioException catch (e) {
+      debugPrint('SUB: DioException ${e.response?.statusCode} ${e.response?.data}');
+      rethrow;
+    }
   }
 
   // Cancel a subscription

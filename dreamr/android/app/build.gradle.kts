@@ -2,7 +2,8 @@ plugins {
     id("com.android.application")
     // id("kotlin-android")
     id("org.jetbrains.kotlin.android")
-
+    // Firebase Gradle plugin
+    id("com.google.gms.google-services") version "4.4.2"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -54,8 +55,8 @@ android {
         //targetSdk = flutter.targetSdkVersion
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 7 // also change in pubspec.yaml
-        versionName = "1.0.2" // also change in pubspec.yaml
+        versionCode = 1                         // also change in pubspec.yaml
+        versionName = "1.0.3"                   // also change in pubspec.yaml
     }
 
     signingConfigs {
