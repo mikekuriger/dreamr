@@ -710,39 +710,7 @@ class SubscriptionService:
 
             # If we still can't find it, re-raise so you see the error
             raise
-    # def _create_subscription(user_id, plan_id, payment_provider=None, 
-    #                         provider_subscription_id=None, provider_transaction_id=None,
-    #                         receipt_data=None, auto_renew=False):
-    #     """Create a subscription record"""
-    #     plan = SubscriptionPlan.query.get(plan_id)
-        
-    #     # Calculate end date based on period
-    #     start_date = datetime.utcnow()
-    #     if plan.period == 'monthly':
-    #         end_date = start_date + relativedelta(months=1)
-    #     elif plan.period == 'yearly':
-    #         end_date = start_date + relativedelta(years=1)
-    #     else:
-    #         # Default to 30 days if period is unknown
-    #         end_date = start_date + timedelta(days=30)
-        
-    #     subscription = UserSubscription(
-    #         user_id=user_id,
-    #         plan_id=plan_id,
-    #         status='active',
-    #         start_date=start_date,
-    #         end_date=end_date,
-    #         auto_renew=auto_renew,
-    #         payment_method=payment_provider,
-    #         payment_provider=payment_provider,
-    #         provider_subscription_id=provider_subscription_id,
-    #         provider_transaction_id=provider_transaction_id,
-    #         receipt_data=receipt_data
-    #     )
-        
-    #     db.session.add(subscription)
-    #     db.session.commit()
-    #     return subscription
+    
     
     @staticmethod
     def _create_payment(user_id, subscription_id, amount, provider, 
@@ -1014,92 +982,6 @@ class SubscriptionService:
                 "message": f"Unexpected Google verification error: {e}",
             }
 
-    
-        
-    # @staticmethod
-    # def _verify_apple_receipt(receipt_data):
-    #     """
-    #     Verify an Apple App Store receipt
-    #     1. Send the receipt to Apple's verification endpoint
-    #     2. Parse the response
-    #     3. Validate the subscription details
-    #     """
-    #     verify_url = "https://buy.itunes.apple.com/verifyReceipt"  # Use sandbox URL for testing
-    #     response = requests.post(verify_url, json={"receipt-data": receipt_data})
-    #     result = response.json()
-    #     # Validate the response and extract subscription details
-    #     if result.get("status") == 0:  # 0 = valid receipt
-    #         # Extract subscription ID, transaction ID, expiry date, etc.
-    #         return {
-    #             'valid': True,
-    #             'subscription_id': result.get("latest_receipt_info")[0].get("original_transaction_id"),
-    #             'transaction_id': result.get("latest_receipt_info")[0].get("transaction_id"),
-    #             # 'expiry_date': # Convert timestamp to ISO date
-    #         }
-    #     else:
-    #         return {'valid': False, 'message': f"Invalid receipt: {result.get('status')}"}
-
-    # @staticmethod
-    # def _verify_apple_receipt(receipt_data):
-    #     # Placeholder implementation
-    #     return {
-    #         'valid': True,
-    #         'subscription_id': f"apple_{uuid.uuid4()}",
-    #         'transaction_id': f"apple_txn_{uuid.uuid4()}",
-    #         'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
-    #     }
-
-    
-    # @staticmethod
-    # def _verify_google_receipt(receipt_data):
-    #     """
-    #     Verify a Google Play receipt
-        
-    #     This is a placeholder. In a real implementation, you would:
-    #     1. Verify the purchase token with Google's API
-    #     2. Parse the response
-    #     3. Validate the subscription details
-    #     """
-    #     # Placeholder implementation
-    #     return {
-    #         'valid': True,
-    #         'subscription_id': f"google_{uuid.uuid4()}",
-    #         'transaction_id': f"google_txn_{uuid.uuid4()}",
-    #         'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
-    #     }
-
-    def _create_stripe_checkout_session(user_id, plan_id):
-        """
-        Create a Stripe checkout session for a subscription
-        """
-        plan = SubscriptionPlan.query.get(plan_id)
-        # Create a Stripe checkout session
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {
-                        'name': plan.name,
-                        'description': plan.description,
-                    },
-                    'unit_amount': int(float(plan.price) * 100),  # Stripe uses cents
-                    'recurring': {
-                        'interval': 'month' if plan.period == 'monthly' else 'year',
-                    },
-                },
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=f"https://your-app.com/subscription/success?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"https://your-app.com/subscription/cancel",
-            client_reference_id=str(user_id),
-            metadata={
-                'user_id': user_id,
-                'plan_id': plan_id,
-            },
-        )
-        return session.url
 
     def process_subscription_renewals():
         """
