@@ -10,6 +10,9 @@ from flask_mail import Message, Mail
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from google.oauth2 import id_token
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google.auth.transport import requests as google_requests
 from jwt import InvalidTokenError, PyJWKClient
 from langdetect import detect
@@ -100,7 +103,7 @@ APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID") or APPLE_BUNDLE_ID
 
 _apple_jwk_client = PyJWKClient(APPLE_JWKS_URL)
 
-# apple store
+# apple store (bottom of page https://appstoreconnect.apple.com/apps/6747240349/distribution/info)
 # @app.post("/appstore/notifications")
 # def appstore_notifications():
 #     data = request.get_json(force=True, silent=True)
@@ -437,6 +440,9 @@ class UserCredits(db.Model):
 
 # --- Subscription Service ---
 class SubscriptionService:
+
+    APPSTORE_SHARED_SECRET = app.config.get("APPSTORE_SHARED_SECRET")
+    
     @staticmethod
     def get_user_subscription_status(user_id):
         """Get the current subscription status for a user"""
@@ -603,39 +609,140 @@ class SubscriptionService:
         return True
     
     @staticmethod
-    def _create_subscription(user_id, plan_id, payment_provider=None, 
-                            provider_subscription_id=None, provider_transaction_id=None,
-                            receipt_data=None, auto_renew=False):
-        """Create a subscription record"""
+    def _create_subscription(
+        user_id,
+        plan_id,
+        payment_provider=None,
+        provider_subscription_id=None,
+        provider_transaction_id=None,
+        receipt_data=None,
+        auto_renew=True,
+    ):
         plan = SubscriptionPlan.query.get(plan_id)
-        
-        # Calculate end date based on period
-        start_date = datetime.utcnow()
-        if plan.period == 'monthly':
-            end_date = start_date + relativedelta(months=1)
-        elif plan.period == 'yearly':
-            end_date = start_date + relativedelta(years=1)
+        if not plan:
+            raise ValueError(f"Plan {plan_id} not found in _create_subscription")
+
+        now = datetime.utcnow()
+
+        # Simple end_date calculation – keep whatever logic you already have
+        if plan.period == "monthly":
+            end_date = now + relativedelta(months=1)
+        elif plan.period == "yearly":
+            end_date = now + relativedelta(years=1)
         else:
-            # Default to 30 days if period is unknown
-            end_date = start_date + timedelta(days=30)
-        
+            # fallback, or raise
+            end_date = now + relativedelta(months=1)
+
+        # First, see if we already have this exact provider+transaction
+        existing = None
+        if payment_provider and provider_transaction_id:
+            existing = UserSubscription.query.filter_by(
+                payment_provider=payment_provider,
+                provider_transaction_id=provider_transaction_id,
+            ).first()
+
+        if existing:
+            # Idempotent update of an existing subscription row
+            logger.info(
+                "SubscriptionService._create_subscription: updating existing "
+                f"user_sub id={existing.id} user={user_id} provider={payment_provider} "
+                f"txn={provider_transaction_id}"
+            )
+            existing.plan_id = plan_id
+            existing.status = "active"
+            existing.start_date = now
+            existing.end_date = end_date
+            existing.auto_renew = auto_renew
+            existing.payment_method = payment_provider
+            existing.provider_subscription_id = provider_subscription_id
+            existing.receipt_data = receipt_data
+            db.session.commit()
+            return existing
+
+        # Otherwise, create a new subscription row
         subscription = UserSubscription(
             user_id=user_id,
             plan_id=plan_id,
-            status='active',
-            start_date=start_date,
+            status="active",
+            start_date=now,
             end_date=end_date,
             auto_renew=auto_renew,
             payment_method=payment_provider,
             payment_provider=payment_provider,
             provider_subscription_id=provider_subscription_id,
             provider_transaction_id=provider_transaction_id,
-            receipt_data=receipt_data
+            receipt_data=receipt_data,
         )
+
+        try:
+            db.session.add(subscription)
+            db.session.commit()
+            logger.info(
+                "SubscriptionService._create_subscription: created new "
+                f"user_sub id={subscription.id} user={user_id} provider={payment_provider} "
+                f"txn={provider_transaction_id}"
+            )
+            return subscription
+        except IntegrityError as e:
+            db.session.rollback()
+            logger.warning(
+                "SubscriptionService._create_subscription: IntegrityError on insert, "
+                "retrying as update: %s",
+                e,
+            )
+            # Last-resort: fetch again and update, in case of race
+            if payment_provider and provider_transaction_id:
+                existing = UserSubscription.query.filter_by(
+                    payment_provider=payment_provider,
+                    provider_transaction_id=provider_transaction_id,
+                ).first()
+                if existing:
+                    existing.plan_id = plan_id
+                    existing.status = "active"
+                    existing.start_date = now
+                    existing.end_date = end_date
+                    existing.auto_renew = auto_renew
+                    existing.payment_method = payment_provider
+                    existing.provider_subscription_id = provider_subscription_id
+                    existing.receipt_data = receipt_data
+                    db.session.commit()
+                    return existing
+
+            # If we still can't find it, re-raise so you see the error
+            raise
+    # def _create_subscription(user_id, plan_id, payment_provider=None, 
+    #                         provider_subscription_id=None, provider_transaction_id=None,
+    #                         receipt_data=None, auto_renew=False):
+    #     """Create a subscription record"""
+    #     plan = SubscriptionPlan.query.get(plan_id)
         
-        db.session.add(subscription)
-        db.session.commit()
-        return subscription
+    #     # Calculate end date based on period
+    #     start_date = datetime.utcnow()
+    #     if plan.period == 'monthly':
+    #         end_date = start_date + relativedelta(months=1)
+    #     elif plan.period == 'yearly':
+    #         end_date = start_date + relativedelta(years=1)
+    #     else:
+    #         # Default to 30 days if period is unknown
+    #         end_date = start_date + timedelta(days=30)
+        
+    #     subscription = UserSubscription(
+    #         user_id=user_id,
+    #         plan_id=plan_id,
+    #         status='active',
+    #         start_date=start_date,
+    #         end_date=end_date,
+    #         auto_renew=auto_renew,
+    #         payment_method=payment_provider,
+    #         payment_provider=payment_provider,
+    #         provider_subscription_id=provider_subscription_id,
+    #         provider_transaction_id=provider_transaction_id,
+    #         receipt_data=receipt_data
+    #     )
+        
+    #     db.session.add(subscription)
+    #     db.session.commit()
+    #     return subscription
     
     @staticmethod
     def _create_payment(user_id, subscription_id, amount, provider, 
@@ -718,48 +825,248 @@ class SubscriptionService:
 
         db.session.commit()
         return sub
-    
+
+
     @staticmethod
-    def _verify_apple_receipt(receipt_data):
+    def _verify_apple_receipt(receipt_data: str) -> dict:
         """
-        Verify an Apple App Store receipt
-        1. Send the receipt to Apple's verification endpoint
-        2. Parse the response
-        3. Validate the subscription details
+        Verify an Apple purchase.
+
+        1. First, try to treat receipt_data as StoreKit 2 transaction JSON
+           (what your Flutter app is actually sending now).
+        2. If that fails, fall back to legacy /verifyReceipt flow which expects
+           base64 app receipt.
         """
-        verify_url = "https://buy.itunes.apple.com/verifyReceipt"  # Use sandbox URL for testing
-        response = requests.post(verify_url, json={"receipt-data": receipt_data})
-        result = response.json()
-        # Validate the response and extract subscription details
-        if result.get("status") == 0:  # 0 = valid receipt
-            # Extract subscription ID, transaction ID, expiry date, etc.
-            return {
-                'valid': True,
-                'subscription_id': result.get("latest_receipt_info")[0].get("original_transaction_id"),
-                'transaction_id': result.get("latest_receipt_info")[0].get("transaction_id"),
-                # 'expiry_date': # Convert timestamp to ISO date
+
+        # --- Path 1: StoreKit 2 transaction JSON from the client ---
+        try:
+            tx = json.loads(receipt_data)
+            if isinstance(tx, dict) and "transactionId" in tx:
+                logger.info("Apple verify: treating receipt_data as StoreKit2 JSON transaction")
+
+                transaction_id = tx.get("transactionId")
+                original_transaction_id = (
+                    tx.get("originalTransactionId") or transaction_id
+                )
+
+                # expiresDate is in ms since epoch, optional
+                expires_ms = tx.get("expiresDate")
+                expiry_iso = None
+                if expires_ms:
+                    try:
+                        ms = int(expires_ms)
+                        expiry_iso = datetime.utcfromtimestamp(ms / 1000.0).isoformat() + "Z"
+                    except Exception as e:
+                        logger.warning(f"Could not parse expiresDate={expires_ms}: {e}")
+
+                return {
+                    "valid": True,
+                    "subscription_id": original_transaction_id,
+                    "transaction_id": transaction_id,
+                    "expiry_date": expiry_iso,
+                    "raw": tx,
+                }
+        except Exception as e:
+            # Not JSON or not the expected shape – fall back to legacy logic
+            logger.info(f"Apple verify: receipt_data is not StoreKit2 JSON: {e}")
+
+        # --- Path 2: legacy /verifyReceipt base64 receipt (only if above fails) ---
+
+        shared_secret = SubscriptionService.APPSTORE_SHARED_SECRET
+        if not shared_secret:
+            logger.error("APPSTORE_SHARED_SECRET is not configured")
+            return {"valid": False, "message": "Missing shared secret"}
+
+        def call_apple(url: str) -> dict:
+            payload = {
+                "receipt-data": receipt_data,
+                "password": shared_secret,
+                "exclude-old-transactions": True,
             }
-        else:
-            return {'valid': False, 'message': f"Invalid receipt: {result.get('status')}"}
+            r = requests.post(url, json=payload, timeout=10)
+            try:
+                return r.json()
+            except Exception:
+                logger.error(f"Apple verifyReceipt non-JSON response: {r.text}")
+                return {"status": -1, "message": "non-JSON response"}
+
+        prod_url = "https://buy.itunes.apple.com/verifyReceipt"
+        sandbox_url = "https://sandbox.itunes.apple.com/verifyReceipt"
+
+        result = call_apple(prod_url)
+        status = result.get("status")
+
+        if status == 21007:
+            logger.info("Apple verifyReceipt 21007 → retrying sandbox endpoint")
+            result = call_apple(sandbox_url)
+            status = result.get("status")
+
+        if status != 0:
+            return {
+                "valid": False,
+                "message": f"Apple verifyReceipt status={status}",
+            }
+
+        latest_info = None
+        info_list = result.get("latest_receipt_info")
+        if isinstance(info_list, list) and info_list:
+            latest_info = info_list[-1]
+        elif isinstance(info_list, dict):
+            latest_info = info_list
+
+        if not latest_info:
+            return {
+                "valid": False,
+                "message": "Apple verifyReceipt: missing latest_receipt_info",
+            }
+
+        sub_id = (
+            latest_info.get("original_transaction_id")
+            or latest_info.get("transaction_id")
+        )
+        txn_id = latest_info.get("transaction_id")
+
+        expires_ms = latest_info.get("expires_date_ms")
+        expiry_iso = None
+        if expires_ms:
+            try:
+                ms = int(expires_ms)
+                expiry_iso = datetime.utcfromtimestamp(ms / 1000.0).isoformat() + "Z"
+            except Exception as e:
+                logger.warning(f"Could not parse expires_date_ms={expires_ms}: {e}")
+
+        return {
+            "valid": True,
+            "subscription_id": sub_id,
+            "transaction_id": txn_id,
+            "expiry_date": expiry_iso,
+            "raw": latest_info,
+        }
+    
+
+    # Android
+    def _get_android_publisher_client():
+        creds = service_account.Credentials.from_service_account_file(
+            app.config["GOOGLE_SERVICE_ACCOUNT_JSON"],
+            scopes=["https://www.googleapis.com/auth/androidpublisher"],
+        )
+        return build("androidpublisher", "v3", credentials=creds, cache_discovery=False)
+
+    @staticmethod
+    def _verify_google_receipt(receipt_data: str) -> dict:
+        """
+        Verify a Google Play subscription using purchases.subscriptionsv2.get.
+        receipt_data: purchase token from the device (serverVerificationData on Android).
+        Returns {valid: bool, subscription_id, transaction_id, product_id, expiry_date?, message?}
+        """
+
+        try:
+            android_publisher = _get_android_publisher_client()
+            package_name = app.config["GOOGLE_PACKAGE_NAME"]
+
+            # v2 endpoint – recommended for modern subs.:contentReference[oaicite:5]{index=5}
+            resp = (
+                android_publisher
+                .purchases()
+                .subscriptionsv2()
+                .get(
+                    packageName=package_name,
+                    token=receipt_data,
+                )
+                .execute()
+            )
+
+            # SubscriptionPurchaseV2 structure:
+            # - subscriptionState: "SUBSCRIPTION_STATE_ACTIVE", etc.
+            # - latestOrderId: the most recent order ID
+            # - lineItems[0].productId, lineItems[0].expiryTime, etc.:contentReference[oaicite:6]{index=6}
+            state = resp.get("subscriptionState")
+            line_items = resp.get("lineItems") or []
+            line = line_items[0] if line_items else {}
+            product_id = line.get("productId")
+            expiry_time = line.get("expiryTime")  # e.g. "2025-01-15T10:00:00Z"
+
+            if state != "SUBSCRIPTION_STATE_ACTIVE":
+                return {
+                    "valid": False,
+                    "product_id": product_id,
+                    "message": f"Google subscriptionState={state}",
+                }
+
+            latest_order_id = resp.get("latestOrderId")
+
+            return {
+                "valid": True,
+                "subscription_id": latest_order_id,
+                "transaction_id": latest_order_id,
+                "product_id": product_id,
+                "expiry_date": expiry_time,
+            }
+
+        except HttpError as e:
+            return {
+                "valid": False,
+                "message": f"Google API error: {e}",
+            }
+        except Exception as e:
+            return {
+                "valid": False,
+                "message": f"Unexpected Google verification error: {e}",
+            }
 
     
-    @staticmethod
-    def _verify_google_receipt(receipt_data):
-        """
-        Verify a Google Play receipt
         
-        This is a placeholder. In a real implementation, you would:
-        1. Verify the purchase token with Google's API
-        2. Parse the response
-        3. Validate the subscription details
-        """
-        # Placeholder implementation
-        return {
-            'valid': True,
-            'subscription_id': f"google_{uuid.uuid4()}",
-            'transaction_id': f"google_txn_{uuid.uuid4()}",
-            'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
-        }
+    # @staticmethod
+    # def _verify_apple_receipt(receipt_data):
+    #     """
+    #     Verify an Apple App Store receipt
+    #     1. Send the receipt to Apple's verification endpoint
+    #     2. Parse the response
+    #     3. Validate the subscription details
+    #     """
+    #     verify_url = "https://buy.itunes.apple.com/verifyReceipt"  # Use sandbox URL for testing
+    #     response = requests.post(verify_url, json={"receipt-data": receipt_data})
+    #     result = response.json()
+    #     # Validate the response and extract subscription details
+    #     if result.get("status") == 0:  # 0 = valid receipt
+    #         # Extract subscription ID, transaction ID, expiry date, etc.
+    #         return {
+    #             'valid': True,
+    #             'subscription_id': result.get("latest_receipt_info")[0].get("original_transaction_id"),
+    #             'transaction_id': result.get("latest_receipt_info")[0].get("transaction_id"),
+    #             # 'expiry_date': # Convert timestamp to ISO date
+    #         }
+    #     else:
+    #         return {'valid': False, 'message': f"Invalid receipt: {result.get('status')}"}
+
+    # @staticmethod
+    # def _verify_apple_receipt(receipt_data):
+    #     # Placeholder implementation
+    #     return {
+    #         'valid': True,
+    #         'subscription_id': f"apple_{uuid.uuid4()}",
+    #         'transaction_id': f"apple_txn_{uuid.uuid4()}",
+    #         'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
+    #     }
+
+    
+    # @staticmethod
+    # def _verify_google_receipt(receipt_data):
+    #     """
+    #     Verify a Google Play receipt
+        
+    #     This is a placeholder. In a real implementation, you would:
+    #     1. Verify the purchase token with Google's API
+    #     2. Parse the response
+    #     3. Validate the subscription details
+    #     """
+    #     # Placeholder implementation
+    #     return {
+    #         'valid': True,
+    #         'subscription_id': f"google_{uuid.uuid4()}",
+    #         'transaction_id': f"google_txn_{uuid.uuid4()}",
+    #         'expiry_date': (datetime.utcnow() + relativedelta(months=1)).isoformat()
+    #     }
 
     def _create_stripe_checkout_session(user_id, plan_id):
         """
@@ -3105,6 +3412,8 @@ def purchase_subscription():
     data = request.get_json(silent=True) or {}
     raw_plan = data.get("plan_id")
 
+    logger.info(f"purchase_subscription payload={data}")
+
     if not raw_plan:
         return jsonify({"error": "plan_id is required"}), 400
 
@@ -3113,6 +3422,7 @@ def purchase_subscription():
     if not plan:
         plan = SubscriptionPlan.query.filter_by(product_id=raw_plan).first()
     if not plan:
+        logger.warning(f"purchase_subscription: plan not found: {raw_plan}")
         return jsonify({"error": f"Plan {raw_plan} not found"}), 404
 
     try:
@@ -3130,7 +3440,13 @@ def purchase_subscription():
 
         return jsonify(result)
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        logger.error(
+            f"purchase_subscription ValueError: {e} "
+            f"user={current_user.id} plan={plan.id} provider={data.get('payment_provider')}",
+            exc_info=True,
+        )
+        return jsonify({"success": False, "error": str(e)}), 200
+        # return jsonify({"error": str(e)}), 400
     except Exception as e:
         logger.error(f"Error initiating subscription: {e}", exc_info=True)
         return jsonify({"error": "Failed to initiate subscription"}), 500

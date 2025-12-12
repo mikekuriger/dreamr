@@ -8,7 +8,8 @@ from sqlalchemy import select, update, and_, text as sqltext
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 PT = ZoneInfo("America/Los_Angeles")
-WEEKLY_TEXT_QUOTA = 2
+WEEKLY_TEXT_QUOTA = 3                   # temp for testing
+FREE_IMAGE_QUOTA  = 0                   # temp for testing
 
 if TYPE_CHECKING:
     # For editors only; never runs at runtime
@@ -44,7 +45,8 @@ def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
             uc = UserCredits(
                 user_id=user_id,
                 text_remaining_week=WEEKLY_TEXT_QUOTA,
-                image_remaining_lifetime=3,
+                image_remaining_lifetime=FREE_IMAGE_QUOTA,
+                # image_remaining_lifetime=3,
                 week_anchor_utc=anchor,
             )
             db.session.add(uc)
