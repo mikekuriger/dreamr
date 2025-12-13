@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+# Add project root to PYTHONPATH
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 import json
 import argparse
 from pathlib import Path
