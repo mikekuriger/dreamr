@@ -71,6 +71,11 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTicker
     super.initState();
     _loadProfile();
 
+// Preload app icon for smoother transition later.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      precacheImage(const AssetImage('assets/images/icon.png'), context);
+    });
+
     _anim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -208,8 +213,10 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTicker
                 // Welcome Title
                 FadeTransition(
                   opacity: _titleFade,
-                  child: SlideTransition(
-                    position: _titleSlide,
+                  // child: SlideTransition(
+                  //   position: _titleSlide,
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.98, end: 1.0).animate(_titleFade),
                     child: Text(
                       titleText,
                       style: const TextStyle(

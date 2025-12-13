@@ -12,7 +12,7 @@ import 'package:dreamr/screens/settings_screen.dart';
 import 'package:dreamr/screens/subscription_screen.dart';
 import 'package:dreamr/screens/life_events_screen.dart';
 import 'package:dreamr/screens/help_screen.dart';
-import 'package:dreamr/constants.dart';
+// import 'package:dreamr/constants.dart';
 import 'package:dreamr/utils/session_manager.dart';
 import 'package:dreamr/state/subscription_model.dart';
 
@@ -59,12 +59,12 @@ class _MainScaffoldState extends State<MainScaffold> {
       // case 3:
       //   title = "Dreamr ✨ Help";
       //   break;
-      case 3:
-        title = "Dreamr ✨ Manage Journal";
-        break;
-      case 4:
-        title = "Dreamr ✨ Profile";
-        break;
+      // case 3:
+      //   title = "Dreamr ✨ Manage Journal";
+      //   break;
+      // case 4:
+      //   title = "Dreamr ✨ Profile";
+      //   break;
       default:
         title = "Dreamr";
     }
@@ -395,7 +395,8 @@ class _MainScaffoldState extends State<MainScaffold> {
         items: [
           _buildNavItem(
             // icon: Icons.psychology_alt,
-            icon: Icons.nightlight,
+            icon: Icons.nights_stay_rounded,
+            // icon: Icons.nightlight,
             label: 'Add Dream',
             index: 0,
           ),
