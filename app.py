@@ -27,6 +27,7 @@ from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import text
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
 from werkzeug.utils import secure_filename
@@ -1005,8 +1006,47 @@ class SubscriptionService:
                 # Process renewal with Stripe
                 pass
 
+# new!
+class Interpreter(db.Model):
+    __tablename__ = "interpreters"
+    __table_args__ = (UniqueConstraint("slug", name="uq_interpreters_slug"),)
 
-    
+    id = db.Column(db.Integer, primary_key=True)
+
+    # stable key used by app/backend (e.g. "warm_storyteller")
+    slug = db.Column(db.String(64), nullable=False)
+
+    name = db.Column(db.String(120), nullable=False)
+    category = db.Column(db.String(32), nullable=False, default="grounded")
+    sort_order = db.Column(db.Integer, nullable=False, default=100)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    # access control
+    access_tier = db.Column(db.String(16), nullable=False, default="pro")  # "free" | "pro"
+    unlock_rule = db.Column(MySQLJSON, nullable=True)  # optional: {"type":"streak_days","value":7}
+
+    # persona prompt fields
+    core_voice = db.Column(db.Text, nullable=False)
+    interpretive_lens = db.Column(db.Text, nullable=False)
+    emotional_stance = db.Column(db.Text, nullable=False)
+    prompt_extra = db.Column(db.Text, nullable=True)  # optional per-persona extra constraints
+
+    # UI card fields
+    card_blurb = db.Column(db.String(255), nullable=False, default="")
+    card_bullets = db.Column(MySQLJSON, nullable=False, default=list)      # ["...", "..."]
+    tone_examples = db.Column(MySQLJSON, nullable=False, default=list)     # ["...", "..."]
+
+    # icon metadata
+    icon_key = db.Column(db.String(64), nullable=False, default="")
+    icon_file = db.Column(db.String(128), nullable=True)       # e.g. "abc123.png"
+    icon_tile_file = db.Column(db.String(128), nullable=True)  # e.g. "abc123.png"
+    icon_prompt = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# End Classes
+
 # Notes
 NOTES_MAX_LEN = 8000
 NOTES_AI_ENABLED = False
@@ -3431,6 +3471,77 @@ def google_play_webhook():
     
     return jsonify({"status": "received"}), 200
 
+# Generate icons for people/theripists
+@app.post("/api/interpreters/<string:interp_id>/icon_generate")
+@login_required
+def generate_interpreter_icon(interp_id):
+
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force", False))  # allow regen even if icon exists
+
+    interp = Interpreter.query.get(interp_id)
+    if not interp:
+        return jsonify({"error": "Interpreter not found"}), 404
+
+    if interp.icon_file and not force:
+        return jsonify({
+            "skipped": True,
+            "icon": f"/static/images/interpreters/{interp.icon_file}",
+            "tile": f"/static/images/interpreters_tiles/{interp.icon_file}",
+        }), 200
+
+    icon_key = interp.icon_key or interp.id
+    specific = ICON_PROMPTS.get(icon_key)
+    if not specific:
+        return jsonify({"error": f"Missing icon prompt for icon_key={icon_key}"}), 400
+
+    # Compose prompt
+    icon_prompt = f"{ICON_STYLE_PROMPT.strip()}\n\nSubject:\n{specific.strip()}\n\nSame character style and proportions as other Dreamr interpreter icons."
+
+    try:
+        logger.info(f"Generating interpreter icon for {interp_id} (icon_key={icon_key})...")
+
+        # Prefer gpt-image-1 for pixel-art consistency and direct bytes
+        image_response = client.images.generate(
+            model="gpt-image-1",
+            prompt=icon_prompt,
+            n=1,
+            size="1024x1024"  # generate large, then downscale to tiles
+        )
+
+        b64 = image_response.data[0].b64_json
+        img_bytes = base64.b64decode(b64)
+
+        filename = f"{uuid.uuid4().hex}.png"
+        icon_path = os.path.join("static", "images", "interpreters", filename)
+        tile_path = os.path.join("static", "images", "interpreters_tiles", filename)
+        os.makedirs(os.path.dirname(icon_path), exist_ok=True)
+        os.makedirs(os.path.dirname(tile_path), exist_ok=True)
+
+        with open(icon_path, "wb") as f:
+            f.write(img_bytes)
+
+        # Make a small tile (tune sizes to your UI)
+        generate_resized_image(icon_path, tile_path, size=(256, 256))
+
+        interp.icon_file = filename
+        interp.icon_prompt = icon_prompt
+        db.session.commit()
+
+        return jsonify({
+            "icon": f"/static/images/interpreters/{filename}",
+            "tile": f"/static/images/interpreters_tiles/{filename}",
+            "icon_key": icon_key
+        }), 200
+
+    except openai.OpenAIError:
+        db.session.rollback()
+        logger.error("OpenAI icon generation failed", exc_info=True)
+        return jsonify({"error": "OpenAI image generation failed"}), 502
+    except Exception:
+        db.session.rollback()
+        logger.exception("Unexpected error during icon generation")
+        return jsonify({"error": "Icon generation failed"}), 500
 
 # =========================
 # Admin blueprint (HTML)
@@ -3476,6 +3587,7 @@ def _render_admin(body_tpl: str, title: str, **ctx):
     body = render_template_string(body_tpl, **ctx)
     return render_template_string(ADMIN_SHELL, title=title, body=body)
 
+
 # --- Admin login form (HTML) reusing your User + bcrypt + Flask-Login ---
 # ----- Admin HTML login -----
 @app.get("/admin/login")
@@ -3509,11 +3621,13 @@ def admin_login_submit():
     login_user(u, remember=True, duration=timedelta(days=90))
     return redirect("/admin/")
 
+
 @app.post("/admin/logout")
 @login_required
 def admin_logout():
     logout_user()
     return redirect("/admin/login")
+
 
 # ----- Admin pages -----
 @app.get("/admin/")
