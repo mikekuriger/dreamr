@@ -25,6 +25,7 @@ class WelcomeTourPrefs {
 /// page or jump straight into the main app.
 Future<void> navigateToPostLoginDestination(BuildContext context) async {
   final hasSeen = await WelcomeTourPrefs.hasSeenTour();
+  // final hasSeen = false;
 
   if (hasSeen) {
     Navigator.pushReplacement(
@@ -50,35 +51,62 @@ class WelcomeTourScreen extends StatefulWidget {
   State<WelcomeTourScreen> createState() => _WelcomeTourScreenState();
 }
 
-class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
-  DateTime? _birthday;
-  String? _gender;
+// class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
+class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTickerProviderStateMixin {
+
   bool _submitting = false;
   String? _userName;
 
-  @override
+  late final AnimationController _anim;
+  late final Animation<double> _titleFade;
+  late final Animation<Offset> _titleSlide;
+  late final Animation<double> _bodyFade;
+  late final Animation<Offset> _bodySlide;
+  late final Animation<double> _buttonsFade;
+  late final Animation<Offset> _buttonsSlide;
+
+
+ @override
   void initState() {
     super.initState();
     _loadProfile();
+
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    _titleFade = CurvedAnimation(parent: _anim, curve: const Interval(0.00, 0.45, curve: Curves.easeOut));
+    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(
+      CurvedAnimation(parent: _anim, curve: const Interval(0.00, 0.45, curve: Curves.easeOut)),
+    );
+
+    _bodyFade = CurvedAnimation(parent: _anim, curve: const Interval(0.15, 0.70, curve: Curves.easeOut));
+    _bodySlide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(
+      CurvedAnimation(parent: _anim, curve: const Interval(0.15, 0.70, curve: Curves.easeOut)),
+    );
+
+    _buttonsFade = CurvedAnimation(parent: _anim, curve: const Interval(0.35, 1.00, curve: Curves.easeOut));
+    _buttonsSlide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(
+      CurvedAnimation(parent: _anim, curve: const Interval(0.35, 1.00, curve: Curves.easeOut)),
+    );
+
+    _anim.forward();
   }
 
-  /// Load first name, birthdate, and gender from API.
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+
+  /// Load first name from API.
   Future<void> _loadProfile() async {
     try {
       final data = await ApiService.getProfile();
-
-      final birthStr = data['birthdate'];
-      DateTime? birthdate =
-          (birthStr != null && birthStr != '') ? DateTime.parse(birthStr) : null;
-
-      final genderStr = data['gender'];
-      String? gender =
-          (genderStr is String && genderStr.isNotEmpty) ? genderStr : null;
-
       setState(() {
         _userName = data['first_name'] ?? '';
-        _birthday = birthdate;
-        _gender = gender;
       });
     } catch (e) {
       debugPrint('WelcomeTour: failed to load profile: $e');
@@ -86,25 +114,7 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
   }
 
 
-  Future<void> _pickBirthday() async {
-    final now = DateTime.now();
-    final initial = _birthday ?? DateTime(now.year - 25, now.month, now.day);
-    final first = DateTime(1900, 1, 1);
-    final last = DateTime(now.year, now.month, now.day);
-
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: first,
-      lastDate: last,
-    );
-
-    if (picked != null) {
-      setState(() => _birthday = picked);
-    }
-  }
-
-    /// Skip: no profile updates, mark welcome as seen, go into app.
+  /// Skip: no profile updates, mark welcome as seen, go into app.
   Future<void> _onSkip() async {
     if (_submitting) return;
     setState(() => _submitting = true);
@@ -126,32 +136,6 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
         builder: (_) => const MainScaffold(initialIndex: 0),
       ),
     );
-  }
-
-  /// Save profile ONLY: stay on this screen, no navigation, no markSeen.
-  Future<void> _onSaveProfile() async {
-    if (_submitting) return;
-    setState(() => _submitting = true);
-
-    try {
-      await _updateProfileOnServer();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Profile saved')),
-        );
-      }
-    } catch (e) {
-      debugPrint('WelcomeTour: failed to save profile: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Failed to save profile')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
-    }
   }
 
   /// Take tour: do NOT save, just mark welcome as seen and go to slideshow.
@@ -178,243 +162,153 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> {
     );
   }
 
-  /// Save birthday / gender to real profile via backend.
-  Future<void> _updateProfileOnServer() async {
-    // If user left everything blank, don't call the API.
-    if (_birthday == null && (_gender == null || _gender!.isEmpty)) {
-      return;
-    }
-
-    try {
-      await ApiService.setProfile(
-        firstName: _userName ?? '',
-        gender: _gender ?? '',
-        birthdate: _birthday,
-      );
-    } catch (e) {
-      debugPrint('WelcomeTour: failed to save profile: $e');
-      // Silent fail for first-login flow; user can fix from Profile page later.
-    }
-  }
-
-  Widget _buildGenderChip(String value, String label) {
-    final selected = _gender == value;
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          color: selected ? Colors.black : Colors.white,
-        ),
-      ),
-      selected: selected,
-      selectedColor: const Color.fromARGB(255, 0, 255, 13),
-      backgroundColor: const Color.fromARGB(255, 46, 46, 46),
-      onSelected: (on) {
-        setState(() {
-          _gender = on ? value : null;
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final birthdayText = _birthday == null
-        ? 'Not set'
-        : '${_birthday!.year}-${_birthday!.month.toString().padLeft(2, '0')}-${_birthday!.day.toString().padLeft(2, '0')}';
-
     final String titleText = (_userName != null && _userName!.isNotEmpty)
-        ? 'Welcome $_userName ✨'
-        : 'Welcome to Dreamr ✨';
+        ? 'Welcome $_userName'
+        : 'Welcome to Dreamr';
+
 
     return Scaffold(
-      backgroundColor: AppColors.purple950,
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 600),
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.purple950,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF82D9FF),
-                width: 1.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color.fromARGB(255, 130, 217, 255)
-                      .withValues(alpha: 0.4),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Header
-                Text(
-                  titleText,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'You may set your birthday and gender here. These details are optional, '
-                  'but they help personalize your dream insights. '
-                  'You can always edit them later in your profile.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Card-like body
+                // App Icon
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  width: 150,
+                  height: 150,
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Birthday row
-                      const Text(
-                        'Birthday',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.white24,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                birthdayText,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton.icon(
-                            onPressed: _submitting ? null : _pickBirthday,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.purple600,
-                              foregroundColor: Colors.white,
-                            ),
-                            icon: const Icon(Icons.calendar_today, size: 18),
-                            label: const Text('Set'),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      // Gender
-                      const Text(
-                        'Gender',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _buildGenderChip('male', 'Male ♂'),
-                          _buildGenderChip('female', 'Female ♀'),
-                          _buildGenderChip('unspecified', 'Prefer not to say'),
-                        ],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.purple600.withValues(alpha: 0.4),
+                        blurRadius: 70,
+                        spreadRadius: 40,
                       ),
                     ],
                   ),
-                ),
-
-                const Spacer(),
-
-                // Primary action (red): Save profile and continue
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _onSaveProfile,
-                    style: ElevatedButton.styleFrom(
-                      // backgroundColor: const Color.fromARGB(255, 255, 0, 0),
-                      backgroundColor: AppColors.purple600,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/icon.png',
+                      fit: BoxFit.cover,
                     ),
-                    child: _submitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text(
-                            'Save profile',
-                            style: TextStyle(fontSize: 16),
-                          ),
                   ),
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 32),
+
+                // Welcome Title
+                FadeTransition(
+                  opacity: _titleFade,
+                  child: SlideTransition(
+                    position: _titleSlide,
+                    child: Text(
+                      titleText,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Welcome Message
+                FadeTransition(
+                  opacity: _bodyFade,
+                  child: SlideTransition(
+                    position: _bodySlide,
+                    child: const Column(
+                      children: [
+                        Text(
+                          'Your dreams are trying to tell you something.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1.25,
+                          ),
+                        ),
+                        SizedBox(height: 10),
+                        Text(
+                          'Capture them fast, spot patterns over time, and connect them to real life.\n'
+                          'Explore meaning with AI insights and dream-inspired visuals.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+
+                const SizedBox(height: 36),
 
                 // Secondary actions
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // TextButton(
-                    //   onPressed: _submitting ? null : _onSkip,
-                    //   style: TextButton.styleFrom(
-                    //     foregroundColor: const Color(0xFF82D9FF),
-                    //   ),
-                    //   child: const Text('Skip for now'),
-                    // ),
-                    TextButton(
-                      onPressed: _submitting ? null : _onTakeTour,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF82D9FF),
-                      ),
-                      child: const Text('Take a quick tour'),
+                // Secondary actions
+                FadeTransition(
+                  opacity: _buttonsFade,
+                  child: SlideTransition(
+                    position: _buttonsSlide,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.purple800.withValues(alpha: 0.5),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: TextButton(
+                            onPressed: _submitting ? null : _onTakeTour,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.purple200.withValues(alpha: 1),
+                            ),
+                            child: const Text('Take a quick tour'),
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        Container(
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF82D9FF).withValues(alpha: 0.15),
+                                blurRadius: 20,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: TextButton(
+                            onPressed: _submitting ? null : _onSkip,
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF82D9FF),
+                            ),
+                            child: const Text('Skip for now'),
+                          ),
+                        ),
+                      ],
                     ),
-                    TextButton(
-                      onPressed: _submitting ? null : _onSkip,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF82D9FF),
-                      ),
-                      child: const Text('Skip for now'),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),

@@ -16,21 +16,42 @@ class _WelcomeSlideshowScreenState extends State<WelcomeSlideshowScreen> {
 
   final List<_TourPageData> _pages = const [
     _TourPageData(
-      title: 'Capture your dreams',
-      body: 'Write down your dreams in seconds, any time of night or day. Dreamr keeps them all in one place.',
-      icon: Icons.bedtime,
+      title: 'Remember more dreams',
+      body: 'Capture dreams fast—then keep everything organized in one private journal.',
+      icon: Icons.nights_stay_rounded,
     ),
     _TourPageData(
-      title: 'AI dream insights',
-      body: 'Get AI-powered interpretations, themes, and emotional patterns—personalized to you.',
-      icon: Icons.psychology,
+      title: 'AI insights that feel personal',
+      body: 'Themes, emotions, and patterns—grounded in what you wrote.',
+      icon: Icons.psychology_alt_rounded,
     ),
     _TourPageData(
-      title: 'Images & journal',
-      body: 'Turn dreams into surreal images and browse your dream history in a visual gallery.',
-      icon: Icons.image,
+      title: 'Connect dreams to real life',
+      body: 'Add Life Events and see how stress, change, and relationships show up at night.',
+      icon: Icons.event_rounded,
+    ),
+    _TourPageData(
+      title: 'Turn dreams into art',
+      body: 'Generate surreal images from your dreams and browse them in a visual gallery.',
+      icon: Icons.auto_awesome_rounded,
+    ),
+    _TourPageData(
+      title: 'Find anything instantly',
+      body: 'Search, sort, and revisit past dreams when patterns start repeating.',
+      icon: Icons.manage_search_rounded,
+    ),
+    _TourPageData(
+      title: 'Ask questions',
+      body: 'Explore symbols, themes, and meaning. Learn',
+      icon: Icons.question_answer_rounded,
+    ),
+    _TourPageData(
+      title: 'Share when you want',
+      body: 'Share dream images or entries with friends—or keep everything private.',
+      icon: Icons.ios_share_rounded,
     ),
   ];
+
 
   void _goNext() {
     if (_currentPage < _pages.length - 1) {
@@ -62,7 +83,8 @@ class _WelcomeSlideshowScreenState extends State<WelcomeSlideshowScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.purple950,
+      backgroundColor: AppColors.black,
+      // backgroundColor: AppColors.purple950,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -82,21 +104,7 @@ class _WelcomeSlideshowScreenState extends State<WelcomeSlideshowScreen> {
                 ],
               ),
 
-              const SizedBox(height: 8),
 
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Quick tour',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
 
               Expanded(
                 child: PageView.builder(
@@ -142,7 +150,7 @@ class _WelcomeSlideshowScreenState extends State<WelcomeSlideshowScreen> {
                 child: ElevatedButton(
                   onPressed: _goNext,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.purple600,
+                    backgroundColor: AppColors.purple700,
                     foregroundColor: Colors.white,
                   ),
                   child: Text(
@@ -163,10 +171,28 @@ class _WelcomeSlideshowScreenState extends State<WelcomeSlideshowScreen> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(
-          page.icon,
-          size: 80,
-          color: const Color(0xFF82D9FF),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF82D9FF).withValues(alpha: 0.1),
+                blurRadius: 20,
+                spreadRadius: 1,
+              ),
+              BoxShadow(
+                color: const Color(0xFF82D9FF).withValues(alpha: 0.3),
+                blurRadius: 60,
+                spreadRadius: 20,
+              ),
+            ],
+          ),
+          child: Icon(
+            page.icon,
+            size: 80,
+            color: const Color(0xFF82D9FF),
+          ),
         ),
         const SizedBox(height: 24),
         Text(
