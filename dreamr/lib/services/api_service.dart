@@ -926,7 +926,19 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final List data = response.data;
-      return data.map((json) => Interpreter.fromJson(json)).toList();
+      final List<Interpreter> interpreters = [];
+
+      for (final json in data) {
+        try {
+          final interpreter = Interpreter.fromJson(json);
+          interpreters.add(interpreter);
+        } catch (e) {
+          // Skip interpreters that can't be parsed (e.g., missing required fields)
+          debugPrint('Skipping malformed interpreter: $e');
+        }
+      }
+
+      return interpreters;
     } else {
       throw Exception('Failed to fetch interpreters: ${response.statusMessage}');
     }
