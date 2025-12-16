@@ -12,6 +12,7 @@ import 'package:dreamr/screens/dream_gallery_screen.dart';
 import 'package:dreamr/screens/forgot_password_screen.dart';
 import 'package:dreamr/screens/profile_screen.dart';
 import 'package:dreamr/screens/subscription_screen.dart';
+import 'package:dreamr/screens/interpreters_screen.dart';
 
 import 'package:dreamr/services/dio_client.dart';
 import 'package:dreamr/theme/colors.dart';
@@ -20,6 +21,7 @@ import 'package:dreamr/constants.dart';
 import 'package:dreamr/repository/dream_repository.dart';
 import 'package:dreamr/state/dream_list_model.dart';
 import 'package:dreamr/state/subscription_model.dart';
+import 'package:dreamr/state/selected_interpreter_model.dart';
 import 'package:dreamr/services/notification_service.dart';
 
 void main() async {
@@ -37,6 +39,9 @@ void main() async {
         ),
         ChangeNotifierProvider<SubscriptionModel>(
           create: (_) => SubscriptionModel()..init(),
+        ),
+        ChangeNotifierProvider<SelectedInterpreterModel>(
+          create: (_) => SelectedInterpreterModel(),
         ),
       ],
       child: const DreamrApp(),
@@ -67,6 +72,7 @@ class DreamrApp extends StatelessWidget {
         '/profile': (context) => ProfileScreen(refreshTrigger: profileRefreshTrigger),
         '/forgot-password': (_) => const ForgotPasswordScreen(),
         '/subscription': (context) => const SubscriptionScreen(),
+        '/interpreters': (context) => const InterpretersScreen(),
       },
     );
   }

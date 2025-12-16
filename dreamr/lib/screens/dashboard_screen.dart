@@ -15,6 +15,10 @@ import 'package:dreamr/services/dio_client.dart';
 // import 'package:dreamr/services/notification_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:mime/mime.dart';
+import 'package:dreamr/models/interpreter.dart';  // For Interpreter class
+import 'package:provider/provider.dart';
+import 'package:dreamr/state/selected_interpreter_model.dart';
+import 'package:dreamr/screens/interpreters_screen.dart';  // For InterpreterHelper
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
@@ -157,6 +161,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   String? _lastDreamText;
   int? _lastDreamId;
 
+  // Selected interpreter
+  Interpreter? _selectedInterpreter;
+
   int? _textRemainingWeek; // track # of free dreams left
   bool? _isPro;
   
@@ -167,7 +174,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     _loadDraftText();
     _initSpeechApi();
     _loadQuota();
+    _loadInitialSelectedInterpreter();
 
+    // Listen to changes in selected interpreter
+    final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+    interpreterModel.addListener(_onInterpreterChanged);
 
     _micAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _micScale = Tween<double>(begin: 1.0, end: 1.25)
@@ -192,6 +203,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     // Refresh quota data when screen becomes visible again
     _loadQuota();
     debugPrint('DashboardScreen: refreshing subscription data in didChangeDependencies');
+
+    // Listen to selected interpreter changes
+    final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+    interpreterModel.addListener(_onInterpreterChanged);
+    // Initialize with current value
+    _onInterpreterChanged();
   }
 
   @override
@@ -203,6 +220,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     widget.refreshTrigger.removeListener(_refreshFromTrigger);
     _stopRecording();
     _micAnim.dispose();
+
+    // Remove interpreter listener
+    final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+    interpreterModel.removeListener(_onInterpreterChanged);
+
     super.dispose();
   }
 
@@ -321,6 +343,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {}
   }
 
+  void _onInterpreterChanged() {
+    final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+    setState(() {
+      _selectedInterpreter = interpreterModel.selectedInterpreter;
+    });
+  }
+
   Future<void> _loadUserName() async {
     try {
       final authData = await ApiService.checkAuth();
@@ -332,6 +361,38 @@ class _DashboardScreenState extends State<DashboardScreen>
         _playIntroAudioOnce();
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadInitialSelectedInterpreter() async {
+    try {
+      final interpreters = await ApiService.fetchInterpreters();
+      final selectedInterpreter = await InterpreterHelper.getSelectedInterpreter(interpreters);
+      
+      Interpreter? interpreterToSet = selectedInterpreter;
+      
+      // If no interpreter is selected, set default to Classic Psychoanalyst (id: 1)
+      // DEFAULT_INTERPRETER_ID: 1 - Classic Psychoanalyst
+      if (interpreterToSet == null) {
+        const int defaultInterpreterId = 1; // Classic Psychoanalyst
+        interpreterToSet = interpreters.cast<Interpreter?>().firstWhere(
+          (interpreter) => interpreter?.id == defaultInterpreterId,
+          orElse: () => interpreters.isNotEmpty ? interpreters.first : null,
+        );
+        
+        // Save the default selection
+        if (interpreterToSet != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('selected_interpreter_id', interpreterToSet.id);
+        }
+      }
+      
+      if (interpreterToSet != null && mounted) {
+        final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+        interpreterModel.setSelectedInterpreter(interpreterToSet);
+      }
+    } catch (e) {
+      debugPrint('Failed to load initial selected interpreter: $e');
+    }
   }
 
   Future<void> _loadDraftText() async {
@@ -747,7 +808,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                 // Button row with mic and analyze
                 Row(
                   children: [
-                    // Voice recording button
+                    // Voice recording button - COMMENTED OUT
+                    /*
                     SizedBox(
                       // height: 56,         // match Analyze button height
                       // width: 56,          // square mic button
@@ -789,6 +851,49 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ],
                       ),
                     ),
+                    */
+
+                    // Interpreter icon
+                    if (_selectedInterpreter != null)
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(context, '/interpreters');
+                        },
+                        child: Container(
+                          width: 55,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.purple600.withValues(alpha: 0.5),
+                              width: 1,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(11),
+                            child: CachedNetworkImage(
+                              imageUrl: 'https://dreamr-us-west-01.zentha.me${_selectedInterpreter!.iconFile}',
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(
+                                color: AppColors.purple950,
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Color(0xFF82D9FF),
+                                  size: 24,
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: AppColors.purple950,
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Color(0xFF82D9FF),
+                                  size: 24,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
 
                     const SizedBox(width: 12), // Spacing between buttons

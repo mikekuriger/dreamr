@@ -12,6 +12,7 @@ import 'package:dreamr/screens/settings_screen.dart';
 import 'package:dreamr/screens/subscription_screen.dart';
 import 'package:dreamr/screens/life_events_screen.dart';
 import 'package:dreamr/screens/help_screen.dart';
+import 'package:dreamr/screens/interpreters_screen.dart';
 // import 'package:dreamr/constants.dart';
 import 'package:dreamr/utils/session_manager.dart';
 import 'package:dreamr/state/subscription_model.dart';
@@ -293,6 +294,14 @@ class _MainScaffoldState extends State<MainScaffold> {
                     ),
                   );
                   break;
+                case '/interpreters':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const InterpretersScreen(),
+                    ),
+                  );
+                  break;
                 case '/login':
                   Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
                   break;
@@ -358,6 +367,16 @@ class _MainScaffoldState extends State<MainScaffold> {
                     Icon(Icons.help_outline, color: Colors.white),
                     SizedBox(width: 8),
                     Text('Help', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: '/interpreters',
+                child: Row(
+                  children: [
+                    Icon(Icons.psychology, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text('Dream Interpreters', style: TextStyle(color: Colors.white)),
                   ],
                 ),
               ),

@@ -1,6 +1,7 @@
 // services/api_service.dart
 // import 'dart:convert';
 import 'package:dreamr/models/dream.dart';
+import 'package:dreamr/models/interpreter.dart';
 import 'package:dreamr/models/life_event.dart';
 import 'package:dreamr/models/subscription.dart';
 import 'dio_client.dart';
@@ -916,6 +917,18 @@ class ApiService {
       debugPrint('Exception deleting life event: $e');
       debugPrint('Stack trace: $stackTrace');
       return false; // Return false instead of throwing
+    }
+  }
+
+  // Fetch available dream interpreters
+  static Future<List<Interpreter>> fetchInterpreters() async {
+    final response = await DioClient.dio.get('/api/interpreters');
+
+    if (response.statusCode == 200) {
+      final List data = response.data;
+      return data.map((json) => Interpreter.fromJson(json)).toList();
+    } else {
+      throw Exception('Failed to fetch interpreters: ${response.statusMessage}');
     }
   }
 }
