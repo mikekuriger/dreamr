@@ -55,8 +55,8 @@ android {
         //targetSdk = flutter.targetSdkVersion
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 12                        // also change in pubspec.yaml
-        versionName = "1.0.6"                   // also change in pubspec.yaml
+        versionCode = 13                        // also change in pubspec.yaml
+        versionName = "1.0.7"                   // also change in pubspec.yaml
     }
 
     signingConfigs {
@@ -70,8 +70,8 @@ android {
     
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
         }
     }

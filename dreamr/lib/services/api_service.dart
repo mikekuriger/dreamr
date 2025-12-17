@@ -445,10 +445,15 @@ class ApiService {
   }
 
   // Submit a dream to the AI
-  static Future<Map<String, dynamic>> submitDream(String text) async {
+  static Future<Map<String, dynamic>> submitDream(String text, {int? interpreterId}) async {
+    final Map<String, dynamic> requestData = {'message': text};
+    if (interpreterId != null) {
+      requestData['interpreter_id'] = interpreterId;
+    }
+    
     final response = await DioClient.dio.post(
       '/api/chat',
-      data: {'message': text},
+      data: requestData,
       options: Options(contentType: Headers.jsonContentType),
     );
     if (response.statusCode == 200) {

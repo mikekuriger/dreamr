@@ -428,7 +428,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     widget.onAnalyzingChange?.call(true); // 👈 disable/hide nav
 
     try {
-      final result = await ApiService.submitDream(text);
+      final result = await ApiService.submitDream(
+        text,
+        interpreterId: _selectedInterpreter?.id,
+      );
       final analysis = result['analysis'] as String;
       final dreamId = int.parse(result['dream_id'].toString());
       setState(() { _lastDreamId = dreamId; });

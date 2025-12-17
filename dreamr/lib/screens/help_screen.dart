@@ -182,7 +182,7 @@ class HelpScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'Dreamr ✨ v1.0.6+12\n© 2025 Michael Kuriger',          // version number
+                      'Dreamr ✨ v1.0.7+13\n© 2025 Michael Kuriger',          // version number
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color.fromARGB(200, 122, 209, 255),
