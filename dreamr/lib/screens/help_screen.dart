@@ -85,9 +85,23 @@ class HelpScreen extends StatelessWidget {
                 '• Tap the "Add Dream" button in the navigation bar\n'
                 '• Describe your dream in detail (characters, settings, emotions, events)\n'
                 '• Use the microphone button to record your dream vocally\n'
+                '• Choose your preferred dream interpreter personality\n'
                 '• Tap "Analyze my dream" to get your personalized interpretation\n'
                 '• Wait while the AI generates an image based on your dream\n\n'
                 'Free users have limited dream analyses per week. Upgrade to Pro for unlimited analyses.',
+            ),
+            
+            // Dream Interpreters Section
+            _buildSection(
+              title: 'Dream Interpreters',
+              icon: Icons.person,
+              content: 'Choose from different AI personalities to analyze your dreams:\n\n'
+                '• Access through the "Interpreters" tab in the navigation bar\n'
+                '• Each interpreter brings a unique perspective and style\n'
+                '• Browse by categories like Grounded, Supportive, Analytical, etc.\n'
+                '• Free users can access basic interpreters\n'
+                '• Pro subscribers unlock additional specialized personalities\n'
+                '• Your choice affects the tone and depth of dream interpretations',
             ),
             
             // Dream Journal Section
@@ -142,6 +156,7 @@ class HelpScreen extends StatelessWidget {
               content: 'Understanding your dream credits:\n\n'
                 '• Free users get 2 dream analyses per week\n'
                 '• Pro subscribers get unlimited dream analyses\n'
+                '• Pro subscribers also unlock additional dream interpreter personalities\n'
                 '• Upgrade through the hamburger menu → Subscription\n',
             ),
             
