@@ -34,7 +34,7 @@ Format your response as follows, and make sure the words Analysis, Summary, and 
 **Type:** [Dream / Question / Decline]""",
 
 
-    "dream": """You are a professional dream analyst who interprets subconscious symbols with empathy and psychological insight. If a 
+    "dream": """You are a professional dream analyst who interprets subconscious symbols with empathy and psychological insight. 
 Your goal is to provide thoughtful, human-centered interpretations of dreams using established research frameworks (e.g., continuity theory, threat simulation theory), but do not mention them by name.
 Base your insights on emotional themes, psychological symbolism, and mythological resonance. Do not use mystical or supernatural explanations.
 Respond in a clear, authentic tone with warmth and emotional realism — not clinical or robotic. Make the response visually appealing and easy to scan. 
@@ -42,7 +42,7 @@ Respond in a clear, authentic tone with warmth and emotional realism — not cli
 ### Instructions:
 
 - Begin with one brief, reflective sentence about the dream — no greeting.  Include this in the *Analysis:** block.
-- Format your response using Markdown with headings, paragraphs, and bullet points
+- important: Format your response using Markdown with headings, paragraphs, and bullet points
 - Use emojis sparingly to express key emotions, images, or symbols
 - If the dream includes sexual or explicit content, interpret it symbolically (intimacy, vulnerability, desire), avoiding graphic or literal language.
 - Some users may write something short, ie "wolf ate my beloved cat" - try to interpret these as dreams.
@@ -50,7 +50,6 @@ Respond in a clear, authentic tone with warmth and emotional realism — not cli
 - If the input is not dream-related, use Type: Decline with a polite, single-sentence redirection. Omit summary and tone when declining.
 - Write the summary and analysis in the same language as the dream is written in.
 - Close with empathetic wisdom or reflective advice, if appropriate.
-- If the input is not dream-related, respond with a polite, single-sentence redirection too try a Pro account followed by **Type:** Decline. Omit summary and tone when declining.
 
 
 In addition to a detailed interpretation, include:
@@ -104,20 +103,71 @@ Now rewrite the dream description into a safe, abstract visual prompt that follo
 """
     
 }
-    
-    
+
+# For gpt-image-1.5
 TONE_TO_STYLE = {
-    "Peaceful / gentle": "Artistic vivid style",
-    "Epic / heroic": "Concept art",
-    "Whimsical / surreal": "Artistic vivid style",
-    "Nightmarish / dark": "Dark fairytale",
-    # "Nightmarish / dark": "Photo realistic, dark nightmare",
-    # "Romantic / nostalgic": "Impressionist art",
-    "Romantic / nostalgic": "Artistic vivid style",
-    "Ancient / mythic": "Mythological fantasy",
-    "Futuristic / uncanny": "Cyberdream / retrofuturism",
-    "Elegant / ornate": "Artistic vivid style"
+    "Peaceful / gentle": [
+        "Soft watercolor illustration, pastel tones, gentle lighting",
+        "Dreamlike oil painting, muted colors, smooth brush strokes",
+        "Minimalist fantasy illustration, airy composition, warm glow"
+    ],
+
+    "Epic / heroic": [
+        "Cinematic fantasy concept art, dramatic lighting, painterly",
+        "Mythic oil painting, heroic scale, rich color depth",
+        "Illustrated epic fantasy poster, dynamic composition"
+    ],
+
+    "Whimsical / surreal": [
+        "Surreal storybook illustration, imaginative shapes, soft color",
+        "Whimsical children’s book art, dreamy proportions",
+        "Painterly surreal fantasy, floating elements, gentle distortion"
+    ],
+
+    "Nightmarish / dark": [
+        "Dark fairytale illustration, shadow-heavy, painterly",
+        "Surreal nightmare art, distorted forms, low light",
+        "Moody cinematic illustration, dream-horror atmosphere"
+    ],
+
+    "Romantic / nostalgic": [
+        "Impressionist painting, warm light, nostalgic mood",
+        "Soft-focus oil painting, romantic atmosphere",
+        "Vintage storybook illustration, faded tones"
+    ],
+
+    "Ancient / mythic": [
+        "Mythological fantasy illustration, classical composition",
+        "Ancient fresco–inspired painting, earthy tones",
+        "Epic mythic oil painting, timeless atmosphere"
+    ],
+
+    "Futuristic / uncanny": [
+        "Retrofuturistic concept art, uncanny atmosphere",
+        "Cyberdream illustration, neon accents, soft focus",
+        "Surreal sci-fi painting, liminal spaces"
+    ],
+
+    "Elegant / ornate": [
+        "Art Nouveau–inspired illustration, flowing lines",
+        "Ornate oil painting, rich textures, classical elegance",
+        "Decorative fantasy illustration, intricate detail"
+    ]
 }
+
+# For Dall-e-3    
+# TONE_TO_STYLE = {
+#     "Peaceful / gentle": "Artistic vivid style",
+#     "Epic / heroic": "Concept art",
+#     "Whimsical / surreal": "Artistic vivid style",
+#     # "Nightmarish / dark": "Dark fairytale",
+#     "Nightmarish / dark": "Photo realistic, dark nightmare",
+#     "Romantic / nostalgic": "Impressionist art",
+#     # "Romantic / nostalgic": "Artistic vivid style",
+#     "Ancient / mythic": "Mythological fantasy",
+#     "Futuristic / uncanny": "Cyberdream / retrofuturism",
+#     "Elegant / ornate": "Artistic vivid style"
+# }
 
 # for Icons
 # Example: global style prompt (same for all icons)
@@ -138,8 +188,7 @@ No text, no logos, no realistic facial likeness.
 ICON_PROMPTS = {
     "seer": "A mysterious but kind figure with scarf or shawl, holding a softly glowing crystal orb, swirling mist shapes, evocative but calm expression.",
     "detective": "A cartoon detective figure with hat and coat silhouette, holding a magnifying glass, foggy background with faint city shapes, mysterious but friendly.",
-    "storyteller": "A cozy storyteller holding an open book with a faint glowing page, soft smile, rounded features, gentle sparkles drifting upward.",
-    # ... add the rest
+    "storyteller": "A cozy storyteller holding an open book with a faint glowing page, soft smile, rounded features, gentle sparkles drifting upward."
 }
 
 

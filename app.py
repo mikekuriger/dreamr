@@ -40,6 +40,7 @@ import json
 import logging
 import openai
 import os
+import random
 import re
 import requests
 import jwt
@@ -2049,18 +2050,12 @@ def convert_dream_to_image_prompt(message, tone=None, quality="high"):
     logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
     logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
 
-    style = TONE_TO_STYLE.get(tone, "Photo Realistic")
-    # style = "Steampunk"
-    # style = "Photo Realistic"
-    # style = "Artistic vivid style"
-    # style = "Watercolor fantasy"
-    # style = "Concept art"
-    # style = "Whimsical children’s book"
-    # style = "Dark fairytale"
-    # style = "Impressionist art"
-    # style = "Mythological fantasy"
-    # style = "Cyberdream / retrofuturism"
-    # style = "Art Nouveau or Oil Painting"
+    # for dall-e-3
+    #style = TONE_TO_STYLE.get(tone, "Photo Realistic")
+
+    # for gpt-image-1.5
+    style = random.choice(TONE_TO_STYLE.get(tone, TONE_TO_STYLE["Peaceful / gentle"]))
+
     logger.debug(f"[convert_dream_to_image_prompt] Selected style: {style}")
 
     full_prompt = f"{base_prompt}\n\nRender the image in the style of \"{style}\".\n\nDream: {message}"
@@ -2337,7 +2332,7 @@ def validate_dream_text(dream_text: str) -> tuple[bool, str]:
 DEFAULT_INTERPRETER_ID = "26"
 
 INTERPRETER_TEMPLATE = """
-Interpret the dream using the following persona style:
+Interpret the dream in the style of {alias} using the following persona elements:
 - Persona Name: {name}
 - Core Voice: {core_voice}
 - Interpretive Lens: {interpretive_lens}
@@ -2376,21 +2371,27 @@ def get_interpreter_for_user(user_id: int, interpreter_id):
         s = str(interpreter_id).strip()
         if not s:
             return None
+            logger.debug("[get_interpreter_for_user] None")
         try:
             iid = int(s)
         except ValueError:
             return None  # invalid id -> default
+            logger.debug("[get_interpreter_for_user] None")
 
     if iid == DEFAULT_INTERPRETER_ID:
         return None  # default: no overlay
+        logger.debug("[get_interpreter_for_user] Default")
 
     interp = Interpreter.query.filter_by(id=iid).first()
     if not interp or not bool(interp.is_enabled):
         return None
+        logger.debug("[get_interpreter_for_user] None")
+        
 
     tier = (interp.access_tier or "").lower().strip()
     if tier == "pro" and not _user_is_pro(user_id):
         return None
+        logger.debug("[get_interpreter_for_user] tier == pro and not _user_is_pro : None")
 
     return interp
 
@@ -2411,11 +2412,15 @@ def chat():
         return jsonify({"error": "Missing dream message."}), 400
 
     interp = get_interpreter_for_user(current_user.id, interpreter_id)
+    logger.debug(f"{current_user.id} - {interpreter_id}")
+    logger.debug(f"[get_interpreter_for_user] {interp}")
+    
 
     overlay = ""
     if interp:
         overlay = INTERPRETER_TEMPLATE.format(
             name=interp.name,
+            alias=interp.alias,
             core_voice=interp.core_voice,
             interpretive_lens=interp.interpretive_lens,
             emotional_stance=interp.emotional_stance,
@@ -2833,53 +2838,57 @@ def generate_dream_image():
     try:
         logger.info(f"Converting dream to {q} quality image prompt...")
         image_prompt = convert_dream_to_image_prompt(message, tone, q)
-        logger.info("Sending image generation request...")
+        # logger.info("Sending image generation request...")
 
         # Supported values are: 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-0721-mini-alpha', 'dall-e-2', and 'dall-e-3'
         # model = "dall-e-2" if q == "low" else "dall-e-3"
         # size  = "512x512"  if q == "low" else "1024x1024"
-            
-        image_response = client.images.generate(
-            model="dall-e-3",
-            prompt=image_prompt,
-            n=1,
-            size="1024x1024",
-            response_format="url"
-        )
-        image_url = image_response.data[0].url
-        logger.info(f"Image URL received: {image_url}")
 
-        filename = f"{uuid.uuid4().hex}.png"
-        image_path = os.path.join("static", "images", "dreams", filename)
-        tile_path = os.path.join("static", "images", "tiles", filename)
-        os.makedirs(os.path.dirname(image_path), exist_ok=True)
-
-        # Fetch and save the image with a timeout
-        img_response = requests.get(image_url, timeout=30)
-        img_response.raise_for_status()
-
-        with open(image_path, "wb") as f:
-            f.write(img_response.content)
-        logger.info(f"Image saved to {image_path}")
-        
+        # dall-e-3 model
+        # logger.info("Sending dall-e-3 image generation request...")
         # image_response = client.images.generate(
-        #     model="gpt-image-1",
+        #     model="dall-e-3",
         #     prompt=image_prompt,
         #     n=1,
         #     size="1024x1024",
+        #     response_format="url"
         # )
-        # b64 = image_response.data[0].b64_json
-        # img_bytes = base64.b64decode(b64)
-        # logger.info(f"Image data received")
+        # image_url = image_response.data[0].url
+        # logger.info(f"Image URL received: {image_url}")
 
         # filename = f"{uuid.uuid4().hex}.png"
         # image_path = os.path.join("static", "images", "dreams", filename)
         # tile_path = os.path.join("static", "images", "tiles", filename)
         # os.makedirs(os.path.dirname(image_path), exist_ok=True)
 
+        # # Fetch and save the image with a timeout
+        # img_response = requests.get(image_url, timeout=30)
+        # img_response.raise_for_status()
+
         # with open(image_path, "wb") as f:
-        #     f.write(img_bytes)
+        #     f.write(img_response.content)
         # logger.info(f"Image saved to {image_path}")
+
+        # gpt-image-1.5 model
+        logger.info("Sending gpt-image-1.5 image generation request...")
+        image_response = client.images.generate(
+            model="gpt-image-1.5",
+            prompt=image_prompt,
+            n=1,
+            size="1024x1024",
+        )
+        b64 = image_response.data[0].b64_json
+        img_bytes = base64.b64decode(b64)
+        logger.info(f"Image data received")
+
+        filename = f"{uuid.uuid4().hex}.png"
+        image_path = os.path.join("static", "images", "dreams", filename)
+        tile_path = os.path.join("static", "images", "tiles", filename)
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+
+        with open(image_path, "wb") as f:
+            f.write(img_bytes)
+        logger.info(f"Image saved to {image_path}")
 
         generate_resized_image(image_path, tile_path, size=(256, 256))
 
@@ -3427,18 +3436,18 @@ def get_interpreters():
             "sort_order": i.sort_order,
 
             "access_tier": i.access_tier,
-            "unlock_rule": i.unlock_rule,
+            # "unlock_rule": i.unlock_rule,
 
             "card_blurb": i.card_blurb,
             "card_bullets": i.card_bullets,
             "tone_examples": i.tone_examples,
 
-            "core_voice": i.core_voice,
-            "interpretive_lens": i.interpretive_lens,
-            "emotional_stance": i.emotional_stance,
-            "prompt_extra": i.prompt_extra,
+            # "core_voice": i.core_voice,
+            # "interpretive_lens": i.interpretive_lens,
+            # "emotional_stance": i.emotional_stance,
+            # "prompt_extra": i.prompt_extra,
 
-            "icon_key": i.icon_key,
+            # "icon_key": i.icon_key,
             "icon": f"/static/images/interpreters/{i.icon_file}" if i.icon_file else None,
             "tile": f"/static/images/interpreters_tiles/{i.icon_file}" if i.icon_file else None,
         }
