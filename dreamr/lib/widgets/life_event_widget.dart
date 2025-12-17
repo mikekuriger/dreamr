@@ -214,6 +214,7 @@ class LifeEventWidgetState extends State<LifeEventWidget> {
           final formattedDate = DateFormat('EEE, MMM d, y').format(event.occurredAt.toLocal());
 
           return Padding(
+            key: Key('event-${event.id}'), // Add unique key for proper widget reuse
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Container(
               width: double.infinity,

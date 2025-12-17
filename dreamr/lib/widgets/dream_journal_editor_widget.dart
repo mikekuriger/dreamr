@@ -107,6 +107,7 @@ class DreamJournalEditorWidgetState extends State<DreamJournalEditorWidget> {
           final formattedDate = DateFormat('EEE, MMM d, y').format(dream.createdAt.toLocal());
 
           return Padding(
+            key: Key('dream-${dream.id}'), // Add unique key for proper widget reuse
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Container(
               width: double.infinity,
@@ -207,15 +208,15 @@ class DreamJournalEditorWidgetState extends State<DreamJournalEditorWidget> {
                           await ApiService.deleteDream(dream.id);
 
                           if (!mounted) return; // check after the await
-                          final messenger = ScaffoldMessenger.of(context); // capture after await
+                          // final messenger = ScaffoldMessenger.of(context); // capture after await
 
                           setState(() {
                             _dreams.removeWhere((d) => d.id == dream.id);
                           });
 
-                          messenger.showSnackBar(
-                            const SnackBar(content: Text('🗑️ Dream deleted')),
-                          );
+                          // messenger.showSnackBar(
+                          //   const SnackBar(content: Text('🗑️ Dream deleted')),
+                          // );
                         } catch (e) {
                           if (!mounted) return;
                           final messenger = ScaffoldMessenger.of(context); // capture after await

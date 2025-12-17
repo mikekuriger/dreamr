@@ -370,10 +370,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       
       Interpreter? interpreterToSet = selectedInterpreter;
       
-      // If no interpreter is selected, set default to Classic Psychoanalyst (id: 1)
-      // DEFAULT_INTERPRETER_ID: 1 - Classic Psychoanalyst
+      // If no interpreter is selected, set default to Dreamr ✨ (id: 26)
+      // DEFAULT_INTERPRETER_ID: 26 - Dreamr ✨
       if (interpreterToSet == null) {
-        const int defaultInterpreterId = 1; // Classic Psychoanalyst
+        const int defaultInterpreterId = 26; // Dreamr ✨
         interpreterToSet = interpreters.cast<Interpreter?>().firstWhere(
           (interpreter) => interpreter?.id == defaultInterpreterId,
           orElse: () => interpreters.isNotEmpty ? interpreters.first : null,
@@ -1022,7 +1022,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             padding: const EdgeInsets.only(top: 12),
                             child: PopupMenuButton<String>(
                               padding: EdgeInsets.zero,
-                              tooltip: 'Share ✨',
+                              // tooltip: 'Share ✨',
                               offset: const Offset(0, 32),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               onSelected: (v) {
@@ -1044,11 +1044,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.share, size: 16, color: Colors.white),
+                                    // Icon(Icons.share, size: 16, color: Color.fromARGB(255, 75, 3, 143)),
+                                    Text('Share', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                                     SizedBox(width: 6),
-                                    Text('Share ✨', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                                    SizedBox(width: 2),
-                                    // Icon(Icons.arrow_drop_down, size: 18, color: Colors.white),
+                                    Icon(Icons.share, size: 16, color: Colors.white),
                                   ],
                                 ),
                               ),

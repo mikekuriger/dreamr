@@ -9,6 +9,41 @@ import 'package:provider/provider.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/state/selected_interpreter_model.dart';
 
+// Category configuration
+class InterpreterCategory {
+  final String name;
+  final String label;
+  final Color color;
+
+  const InterpreterCategory({
+    required this.name,
+    required this.label,
+    required this.color,
+  });
+}
+
+const List<InterpreterCategory> _categories = [
+  InterpreterCategory(name: 'grounded', label: 'Stable', color: Color(0xFFA9C2B1)),
+  InterpreterCategory(name: 'supportive', label: 'Gentle', color: Color(0xFFE8B7C1)),
+  InterpreterCategory(name: 'embodied', label: 'Present', color: Color(0xFFE6D3A3)),
+  InterpreterCategory(name: 'analytical', label: 'Clear', color: Color(0xFF8FA6C1)),
+  InterpreterCategory(name: 'reflective', label: 'Introspective', color: Color(0xFFB9A9C9)),
+  InterpreterCategory(name: 'intuitive', label: 'Insightful', color: Color(0xFF9FC3C0)),
+  InterpreterCategory(name: 'symbolic', label: 'Meaningful', color: Color(0xFF7E87B8)),
+  InterpreterCategory(name: 'mythic', label: 'Transformative', color: Color(0xFF8B6C9E)),
+  InterpreterCategory(name: 'creative', label: 'Imaginative', color: Color(0xFFE3A1A1)),
+  InterpreterCategory(name: 'playful', label: 'Light', color: Color(0xFFF2C27A)),
+  InterpreterCategory(name: 'whimsical', label: 'Delightful', color: Color(0xFFC4C9E8)),
+];
+
+// Extension method for string capitalization
+extension StringExtension on String {
+  String capitalize() {
+    if (isEmpty) return '';
+    return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
+  }
+}
+
 class InterpretersScreen extends StatefulWidget {
   const InterpretersScreen({super.key});
 
@@ -21,12 +56,14 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
   bool _loading = true;
   int? _selectedInterpreterId;
   bool _isPro = false;
+  String? _selectedFilter; // Store selected category filter (single selection)
 
   @override
   void initState() {
     super.initState();
     _loadInterpreters();
     _loadSelectedInterpreter();
+    _loadFilters();
   }
 
   @override
@@ -74,6 +111,30 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
     }
   }
 
+  Future<void> _loadFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    final filter = prefs.getString('interpreter_filter');
+    setState(() {
+      _selectedFilter = filter ?? 'grounded'; // Default to 'grounded' if none selected
+    });
+  }
+
+  Future<void> _saveFilters() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_selectedFilter != null) {
+      await prefs.setString('interpreter_filter', _selectedFilter!);
+    } else {
+      await prefs.remove('interpreter_filter');
+    }
+  }
+
+  void _toggleFilter(String category) {
+    setState(() {
+      _selectedFilter = category; // Always select the clicked category
+    });
+    _saveFilters();
+  }
+
   Future<void> _loadSelectedInterpreter() async {
     final prefs = await SharedPreferences.getInstance();
     final selectedId = prefs.getInt('selected_interpreter_id');
@@ -92,6 +153,36 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
         interpreterModel.setSelectedInterpreter(selectedInterpreter);
       }
     }
+  }
+
+  List<Interpreter> get _filteredInterpreters {
+    final activeFilter = _selectedFilter ?? 'grounded'; // Default to 'grounded' if none selected
+    return _sortedInterpreters.where((interpreter) => interpreter.category == activeFilter).toList();
+  }
+
+  List<Interpreter> get _sortedInterpreters {
+    final sorted = List<Interpreter>.from(_interpreters);
+    sorted.sort((a, b) {
+      // First sort by category order
+      final aCategoryIndex = _categories.indexWhere((cat) => cat.name == a.category);
+      final bCategoryIndex = _categories.indexWhere((cat) => cat.name == b.category);
+      
+      final aIndex = aCategoryIndex >= 0 ? aCategoryIndex : _categories.length;
+      final bIndex = bCategoryIndex >= 0 ? bCategoryIndex : _categories.length;
+      
+      if (aIndex != bIndex) {
+        return aIndex.compareTo(bIndex);
+      }
+      
+      // Then sort by sort_order
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
+    return sorted;
+  }
+
+  List<InterpreterCategory> get _availableCategories {
+    final usedCategories = _interpreters.map((interpreter) => interpreter.category).toSet();
+    return _categories.where((category) => usedCategories.contains(category.name)).toList();
   }
 
   Future<void> _selectInterpreter(int interpreterId) async {
@@ -167,7 +258,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: const [
             Text(
-              "Dreamr ✨ Dram Interpreters",
+              "Dreamr ✨ Interpreters",
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -238,12 +329,79 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
                 ),
               ),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 4),
+            // Filter buttons
+            Container(
+              height: 60,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _availableCategories.length,
+                itemBuilder: (context, index) {
+                  final category = _availableCategories[index];
+                  final activeFilter = _selectedFilter ?? 'grounded';
+                  final isSelected = activeFilter == category.name;
+                  return Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isSelected
+                              ? category.color.withValues(alpha: 0.4)
+                              : category.color.withValues(alpha: 0.2),
+                          blurRadius: isSelected ? 8 : 8,
+                          spreadRadius: isSelected ? 2 : 2,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: FilterChip(
+                      label: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            category.name.capitalize(),
+                            style: TextStyle(
+                              color: isSelected ? const Color.fromARGB(255, 255, 255, 255) : Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          // Text(
+                          //   category.label,
+                          //   style: TextStyle(
+                          //     color: Colors.white70,
+                          //     fontSize: 9,
+                          //   ),
+                          // ),
+                        ],
+                      ),
+                      selected: isSelected,
+                      onSelected: (_) => _toggleFilter(category.name),
+                      backgroundColor: Colors.black,
+                      selectedColor: Colors.black87,
+                      // checkmarkColor: Colors.white,
+                      showCheckmark: false,
+                      side: BorderSide(
+                        color: isSelected ? category.color : category.color.withValues(alpha: 0.2),
+                        width: isSelected ? 2 : 2,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
             Expanded(
               child: ListView.builder(
-                itemCount: _interpreters.length,
+                itemCount: _filteredInterpreters.length,
                 itemBuilder: (context, index) {
-                  final interpreter = _interpreters[index];
+                  final interpreter = _filteredInterpreters[index];
                   final isSelected = _selectedInterpreterId == interpreter.id;
 
                   return Padding(
@@ -260,6 +418,12 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
   }
 
   Widget _buildInterpreterCard(Interpreter interpreter, bool isSelected) {
+    // Get category color - handle null category gracefully
+    final category = _categories.firstWhere(
+      (cat) => cat.name == interpreter.category,
+      orElse: () => _categories.first, // Default to first category if not found
+    );
+
     return GestureDetector(
       onTap: () => _selectInterpreter(interpreter.id),
       child: Stack(
@@ -271,27 +435,18 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
               color: Colors.black,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isSelected ? AppColors.purple600 : const Color(0xFF82D9FF).withValues(alpha: 0.4),
+                color: isSelected ? category.color : category.color.withValues(alpha: 0.4),
                 width: isSelected ? 2 : 2,
               ),
               boxShadow: [
                 BoxShadow(
                   color: isSelected
-                      ? AppColors.purple600.withValues(alpha: 0.6)
-                      : const Color(0xFF82D9FF).withValues(alpha: 0.3),
-                  // blurRadius: 20,
+                      ? category.color.withValues(alpha: 0.6)
+                      : category.color.withValues(alpha: 0.3),
                   blurRadius: 8,
                   spreadRadius: 4,
                   offset: const Offset(0, 4),
                 ),
-                // BoxShadow(
-                //   color: isSelected
-                //       ? AppColors.purple600.withValues(alpha: 0.2)
-                //       : const Color(0xFF82D9FF).withValues(alpha: 0.1),
-                //   blurRadius: 40,
-                //   // spreadRadius: 4,
-                //   offset: const Offset(0, 3),
-                // ),
               ],
             ),
             child: Row(
@@ -305,14 +460,16 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFF82D9FF).withValues(alpha: 0.5),
+                      color: category.color.withValues(alpha: 0.5),
                       width: 1,
                     ),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(11),
                     child: CachedNetworkImage(
-                      imageUrl: 'https://dreamr-us-west-01.zentha.me${interpreter.iconFile}',
+                      imageUrl: interpreter.iconFile.isNotEmpty 
+                        ? 'https://dreamr-us-west-01.zentha.me${interpreter.iconFile}'
+                        : '',
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
                         color: AppColors.purple950,
@@ -367,11 +524,11 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               '• ',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Color(0xFF82D9FF),
+                                color: category.color,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -428,7 +585,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.purple600,
+                  color: category.color,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

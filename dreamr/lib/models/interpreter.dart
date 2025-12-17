@@ -8,6 +8,8 @@ class Interpreter {
   final List<String> cardBullets;
   final List<String> toneExamples;
   final String iconFile;
+  final String category;
+  final int sortOrder;
 
   Interpreter({
     required this.id,
@@ -18,6 +20,8 @@ class Interpreter {
     required this.cardBullets,
     required this.toneExamples,
     required this.iconFile,
+    required this.category,
+    required this.sortOrder,
   });
 
   factory Interpreter.fromJson(Map<String, dynamic> json) {
@@ -30,6 +34,8 @@ class Interpreter {
       cardBullets: List<String>.from(json['card_bullets'] ?? []),
       toneExamples: List<String>.from(json['tone_examples'] ?? []),
       iconFile: json['icon'] as String? ?? '',
+      category: json['category'] as String? ?? 'supportive',
+      sortOrder: json['sort_order'] as int? ?? 0,
     );
   }
 
@@ -43,6 +49,8 @@ class Interpreter {
       'card_bullets': cardBullets,
       'tone_examples': toneExamples,
       'icon': iconFile,
+      'category': category,
+      'sort_order': sortOrder,
     };
   }
 }

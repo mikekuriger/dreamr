@@ -562,6 +562,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                 .format(dream.createdAt.toLocal());
 
             return Padding(
+              key: Key('dream-${dream.id}'), // Add unique key for proper widget reuse
               padding: const EdgeInsets.symmetric(vertical: 4),         // space between cards
               child: Container(
                 width: double.infinity,

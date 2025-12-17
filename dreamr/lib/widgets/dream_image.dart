@@ -36,6 +36,19 @@ class _DreamImageState extends State<DreamImage> {
   @override
   void initState() { super.initState(); _load(); }
 
+  @override
+  void didUpdateWidget(DreamImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload if any key properties changed
+    if (oldWidget.dreamId != widget.dreamId || 
+        oldWidget.url != widget.url || 
+        oldWidget.kind != widget.kind) {
+      _file = null;
+      _loading = true;
+      _load();
+    }
+  }
+
   Future<void> _load() async {
     final url = widget.url;
     if (url == null || url.isEmpty) { setState(() { _loading = false; }); return; }
