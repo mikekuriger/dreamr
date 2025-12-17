@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 PT = ZoneInfo("America/Los_Angeles")
 WEEKLY_TEXT_QUOTA = 3                   # temp for testing
-FREE_IMAGE_QUOTA  = 0                   # temp for testing
+FREE_IMAGE_QUOTA  = 3                   # temp for testing
 
 if TYPE_CHECKING:
     # For editors only; never runs at runtime

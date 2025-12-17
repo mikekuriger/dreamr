@@ -1,0 +1,4 @@
+for i in $(cat scripts/interpreters.v3.json |grep "\"id\""|awk -F\" '{print $4}'); do 
+  echo $i
+  python scripts/generate_interpreter_icons.py --force --slugs $i
+done

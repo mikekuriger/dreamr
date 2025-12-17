@@ -1017,6 +1017,7 @@ class Interpreter(db.Model):
     slug = db.Column(db.String(64), nullable=False)
 
     name = db.Column(db.String(120), nullable=False)
+    alias = db.Column(db.String(120), nullable=False)
     category = db.Column(db.String(32), nullable=False, default="grounded")
     sort_order = db.Column(db.Integer, nullable=False, default=100)
     is_enabled = db.Column(db.Boolean, nullable=False, default=True)
@@ -1039,7 +1040,7 @@ class Interpreter(db.Model):
     # icon metadata
     icon_key = db.Column(db.String(64), nullable=False, default="")
     icon_file = db.Column(db.String(128), nullable=True)       # e.g. "abc123.png"
-    icon_tile_file = db.Column(db.String(128), nullable=True)  # e.g. "abc123.png"
+    # icon_tile_file = db.Column(db.String(128), nullable=True)  # e.g. "abc123.png"
     icon_prompt = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -1371,71 +1372,6 @@ def api_google_login():
         return jsonify({"error": "Invalid token, naughty!"}), 400
 
 
-# @app.route('/api/google_login', methods=['POST'])
-# def api_google_login():
-#     data = request.get_json(silent=True) or {}
-#     token = data.get('id_token')
-#     if not token:
-#         return jsonify({"error": "missing id_token"}), 400
-
-#     try:
-#         req = google_requests.Request()
-#         # 1) Verify signature & claims, but don't pin the audience yet
-#         idinfo = id_token.verify_oauth2_token(token, req, audience=None)
-
-#         aud = idinfo.get("aud")
-#         azp = idinfo.get("azp")
-#         iss = idinfo.get("iss")
-#         email = idinfo.get("email")
-#         email_verified = idinfo.get("email_verified", False)
-#         full_name = idinfo.get("name") or ""
-#         first_name = full_name.split()[0] if full_name else "Unknown"
-
-#         # 2) Strict issuer check
-#         if iss not in ALLOWED_ISS:
-#             raise ValueError(f"bad iss: {iss}")
-
-#         # 3) Accept Web or iOS client as audience (common on native apps)
-#         if aud not in ALLOWED_AUDS:
-#             # Some Google flows put Web client in azp and iOS in aud — allow either.
-#             if azp not in ALLOWED_AUDS:
-#                 raise ValueError(f"bad aud: {aud} azp: {azp}")
-
-#         if not email or not email_verified:
-#             raise ValueError("email not verified")
-
-#         # 4) Normal login / signup flow
-#         user = User.query.filter_by(email=email).first()
-#         if not user:
-#             user = User(
-#                 email=email,
-#                 first_name=first_name,
-#                 password='',
-#                 timezone='',
-#                 email_confirmed=True,
-#             )
-#             db.session.add(user)
-#             db.session.commit()
-#         elif not user.email_confirmed:
-#             user.email_confirmed = True
-#             db.session.commit()
-
-#         login_user(user)
-#         return jsonify({"success": True})
-
-#     except Exception as e:
-#         # Optional: peek safe fields for troubleshooting (no full token logging)
-#         try:
-#             logger.info("google login failed: aud=%s azp=%s iss=%s email=%s err=%s",
-#                      idinfo.get("aud") if 'idinfo' in locals() else None,
-#                      idinfo.get("azp") if 'idinfo' in locals() else None,
-#                      idinfo.get("iss") if 'idinfo' in locals() else None,
-#                      idinfo.get("email") if 'idinfo' in locals() else None,
-#                      e)
-#         except Exception:
-#             logger.info("google login failed: %s", e)
-#         return jsonify({"error": "Invalid token, naughty!"}), 400
-
 # helper for Apple verification
 def verify_apple_identity_token(identity_token: str) -> dict:
     """Verify an Apple Sign in with Apple identity token (JWT) and return its claims."""
@@ -1629,88 +1565,6 @@ def apple_login():
     # 5) Log the user in
     login_user(user)
     return jsonify({"success": True}), 200
-
-
-# @app.route("/api/apple_login", methods=["POST"])
-# def apple_login():
-#     data = request.get_json(silent=True) or {}
-#     identity_token = data.get("identity_token")
-#     authorization_code = data.get("authorization_code")  # currently unused
-#     user_identifier = data.get("user_identifier")
-#     email = data.get("email")
-#     full_name = data.get("full_name")
-#     first_name = full_name.split()[0] if full_name else "Unknown"
-
-#     if not identity_token:
-#         return jsonify({"error": "Missing identity token"}), 400
-
-#     # Verify the Apple identity token (signature + iss/aud/exp).
-#     try:
-#         claims = verify_apple_identity_token(identity_token)
-#     except (InvalidTokenError, RuntimeError) as e:
-#         logger.info("Apple login failed token check: %s", e)
-#         return jsonify({"error": "Invalid Apple identity token"}), 400
-#     except Exception:
-#         logger.exception("Apple login unexpected error while verifying token")
-#         return jsonify({"error": "Apple identity token verification failed"}), 400
-
-#     token_sub = claims.get("sub")
-#     if not token_sub:
-#         return jsonify({"error": "Apple identity token missing subject"}), 400
-
-#     # If the client also sent a user_identifier, make sure it matches the token.
-#     if user_identifier and user_identifier != token_sub:
-#         return jsonify({"error": "Apple user id mismatch"}), 400
-
-#     apple_user_id = token_sub
-
-#     email_from_token = claims.get("email")
-#     email_verified = claims.get("email_verified")
-#     if isinstance(email_verified, str):
-#         email_verified = email_verified.lower() == "true"
-
-#     # Prefer the (verified) email from the token, but fall back to payload.
-#     if email_from_token and (email_verified is True or email_verified is None):
-#         email = email_from_token or email
-
-#     # 1) Try by apple_user_id first
-#     user = User.query.filter_by(apple_user_id=apple_user_id).first()
-
-#     # 2) If no user yet, try merge by email (if Apple gave one)
-#     if not user and email:
-#         user = User.query.filter_by(email=email).first()
-
-#     # 3) If still no user, create a new one
-#     if not user:
-#         if not email:
-#             # Apple should provide an email (real or relay) on first auth.
-#             # If not, we can't safely create an account.
-#             return jsonify({"error": "Apple did not provide an email address, try clearing your saved password for Dreamr in Settings/<your account>/Sign in with apple - and try again"}), 400
-
-#         user = User(
-#             apple_user_id=apple_user_id,
-#             email=email,
-#             first_name=first_name,
-#             password='',
-#             timezone='',
-#             email_confirmed=True,
-#         )
-#         db.session.add(user)
-#     else:
-#         # Attach Apple ID if we found user by email only
-#         if not user.apple_user_id:
-#             user.apple_user_id = apple_user_id
-
-#     try:
-#         db.session.commit()
-#     except IntegrityError:
-#         db.session.rollback()
-#         return jsonify({"error": "Account conflict, please contact support"}), 400
-
-#     # 4) Log the user in (session cookie, same as Google)
-#     login_user(user)
-
-#     return jsonify({"success": True}), 200
 
 
 
@@ -2479,6 +2333,67 @@ def validate_dream_text(dream_text: str) -> tuple[bool, str]:
     return True, ""
 
 
+# for interpreter addition
+DEFAULT_INTERPRETER_ID = "26"
+
+INTERPRETER_TEMPLATE = """
+Interpret the dream using the following persona style:
+- Persona Name: {name}
+- Core Voice: {core_voice}
+- Interpretive Lens: {interpretive_lens}
+- Emotional Stance: {emotional_stance}
+
+Hard rules:
+- Do NOT claim to be a real person.
+- Write in an original voice inspired by the persona description only.
+- Keep all interpretations psychological, symbolic, and grounded.
+
+"""
+
+# INTERPRETER_TEMPLATE = """
+# Interpret the dream using the following persona style:
+# - Persona Name: {name}
+# - Core Voice: {core_voice}
+# - Interpretive Lens: {interpretive_lens}
+# - Emotional Stance: {emotional_stance}
+
+# Hard rules:
+# - Do NOT claim to be a real person.
+# - Write in an original voice inspired by the persona description only.
+# - Keep all interpretations psychological, symbolic, and grounded.
+
+# """
+
+def get_interpreter_for_user(user_id: int, interpreter_id):
+    # interpreter_id may be int, str, None
+    if interpreter_id is None:
+        return None
+
+    # normalize
+    if isinstance(interpreter_id, int):
+        iid = interpreter_id
+    else:
+        s = str(interpreter_id).strip()
+        if not s:
+            return None
+        try:
+            iid = int(s)
+        except ValueError:
+            return None  # invalid id -> default
+
+    if iid == DEFAULT_INTERPRETER_ID:
+        return None  # default: no overlay
+
+    interp = Interpreter.query.filter_by(id=iid).first()
+    if not interp or not bool(interp.is_enabled):
+        return None
+
+    tier = (interp.access_tier or "").lower().strip()
+    if tier == "pro" and not _user_is_pro(user_id):
+        return None
+
+    return interp
+
 
 # dream analysis
 @app.route("/api/chat", methods=["POST"])
@@ -2489,9 +2404,22 @@ def chat():
     logger.debug(f"Received JSON: {data}")
 
     message = data.get("message")
+    interpreter_id = data.get("interpreter_id")
+    
     if not message:
         logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
+
+    interp = get_interpreter_for_user(current_user.id, interpreter_id)
+
+    overlay = ""
+    if interp:
+        overlay = INTERPRETER_TEMPLATE.format(
+            name=interp.name,
+            core_voice=interp.core_voice,
+            interpretive_lens=interp.interpretive_lens,
+            emotional_stance=interp.emotional_stance,
+        )
 
     # Check if user is using a free plan, and update counts
     decremented_text = False
@@ -2522,7 +2450,7 @@ def chat():
         logger.debug(f"Dream saved with ID: {dream.id}")
 
         # Check user input for length, reject if too short
-        logger.debug("[WARN] Validate input.")
+        # logger.debug("[WARN] Validate input.")
         ok, err = validate_dream_text(message)
         if not ok:
             logger.debug(f"[WARN] Invalid input - {err}")
@@ -2543,7 +2471,11 @@ def chat():
         # 2) Build prompt (adds recent life events if any)
         dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
-        logger.info(f"Sending {q} prompt to OpenAI")
+        
+        if overlay:
+            prompt = overlay + "\n\n" + prompt
+            
+        logger.info(f"Sending {q} prompt to OpenAI: {prompt}")
         # logger.debug(f"Dream Analysis Prompt: {prompt}")
 
         response = call_openai_with_retry(prompt)
@@ -3470,6 +3402,49 @@ def google_play_webhook():
     # ...
     
     return jsonify({"status": "received"}), 200
+
+# Grab interpreters
+@app.get("/api/interpreters")
+# @login_required
+def get_interpreters():
+    user_id = current_user.id
+    is_pro = _user_is_pro(user_id)
+
+    q = Interpreter.query.filter(Interpreter.is_enabled.is_(True))
+
+    # Free users only see access_tier="free"
+    if not is_pro:
+        q = q.filter(Interpreter.access_tier == "free")
+
+    interps = q.order_by(Interpreter.sort_order.asc(), Interpreter.name.asc()).all()
+
+    return jsonify([
+        {
+            "id": i.id,
+            "slug": i.slug,
+            "name": i.name,
+            "category": i.category,
+            "sort_order": i.sort_order,
+
+            "access_tier": i.access_tier,
+            "unlock_rule": i.unlock_rule,
+
+            "card_blurb": i.card_blurb,
+            "card_bullets": i.card_bullets,
+            "tone_examples": i.tone_examples,
+
+            "core_voice": i.core_voice,
+            "interpretive_lens": i.interpretive_lens,
+            "emotional_stance": i.emotional_stance,
+            "prompt_extra": i.prompt_extra,
+
+            "icon_key": i.icon_key,
+            "icon": f"/static/images/interpreters/{i.icon_file}" if i.icon_file else None,
+            "tile": f"/static/images/interpreters_tiles/{i.icon_file}" if i.icon_file else None,
+        }
+        for i in interps
+    ])
+
 
 # Generate icons for people/theripists
 @app.post("/api/interpreters/<string:interp_id>/icon_generate")

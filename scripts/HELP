@@ -1,0 +1,15 @@
+
+
+cd ~/dreamr
+
+python scripts/seed_interpreters.py
+python scripts/seed_interpreters.py --file scripts/interpreters.v2.json
+python scripts/generate_interpreter_icons.py
+python scripts/generate_interpreter_icons.py --help
+python scripts/generate_interpreter_icons.py --force
+python scripts/generate_interpreter_icons.py --force --slugs stoic_mentor
+python scripts/generate_interpreter_icons.py --force --slugs charming_rogue_philosopher
+python scripts/generate_interpreter_icons.py --force --slugs curious_analytical_humanist
+python scripts/generate_interpreter_icons.py --force --slugs symbolic_seer
+python scripts/generate_interpreter_icons.py --force --slugs warm_storyteller
+python scripts/generate_interpreter_icons.py --force --slugs wry_humanist

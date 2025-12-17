@@ -19,19 +19,19 @@ MODEL = "gpt-image-1"
 SIZE  = "1024x1024"
 TILE_SIZE = (256, 256)
 
+# STYLE = (
+#     "16-bit pixel art icon. Dreamy, soft, muted pastel palette. "
+#     "No neon, no harsh contrast. Simple shapes. Friendly cartoon look. "
+#     "Centered, square framing. Subtle soft background gradient. "
+#     "No text, no logos, not a realistic likeness."
+# )
+
 STYLE = (
-    "16-bit pixel art icon. Dreamy, soft, muted pastel palette. "
+    "Dreamy, soft, muted pastel palette. "
     "No neon, no harsh contrast. Simple shapes. Friendly cartoon look. "
     "Centered, square framing. Subtle soft background gradient. "
     "No text, no logos, not a realistic likeness."
 )
-
-#STYLE = (
-#    "Dreamy, soft, muted pastel palette. "
-#    "No neon, no harsh contrast. Simple shapes. Friendly cartoon look. "
-#    "Centered, square framing. Subtle soft background gradient. "
-#    "No text, no logos, not a realistic likeness."
-#)
 
 ICON_SUBJECTS = {
   "psychoanalyst": "A classic psychoanalyst character portrait: think Freud, tidy hair, round spectacles, subtle blazer and tie, calm thoughtful expression, soft notebook or clipboard hint.",
@@ -42,7 +42,7 @@ ICON_SUBJECTS = {
   "optimist": "A wide-eyed optimist portrait: Think Elf, bright gentle smile, open expression, simple star or sun motif, uplifting and tender.",
   "humanist": "A curious analytical humanist portrait: Think Data (star trek), thoughtful gaze, sci-fi uniform, warm intelligence.",
   "philosopher": "A disciplined rational philosopher portrait: Think Spock, A calm logical sci-fi thinker with pointed ears and raised eyebrow, simplified and non-realistic. restraint.",
-  "therapist": "A gentle practical therapist portrait: woman, kind face, simple sweater, small clipboard or tea mug, supportive and approachable.",
+  "therapist": "A gentle practical therapist portrait: kind face, simple sweater, small clipboard or tea mug, supportive and approachable.",
   "bard": "A mythic bard portrait: inspired eyes, simple cloak, small lute/harp hint, heroic-story vibe without magic.",
   "detective": "A noir detective portrait: fedora silhouette, trench coat, subtle magnifying glass or streetlamp motif, cool but empathetic.",
   "skeptic": "A compassionate skeptic portrait: neutral calm face, simple hoodie/jacket, small checklist icon, grounded and realistic.",
@@ -51,15 +51,6 @@ ICON_SUBJECTS = {
   "coach": "A protective coach portrait: confident smile, athletic jacket, subtle whistle or shield motif, encouraging and no-nonsense.",
   "seer": "A symbolic seer portrait: Think Fortune Teller, bright red curly hair, calm mysterious eyes, scarf and crystal-orb silhouette, swirling symbol shapes—mystique without prophecy.",
   "rogue": "A charming rogue portrait: Think Charming Pirate, playful grin, bandana on head under a pirate hat, long dreadlicks, feathery earrings, mischievous but insightful.",
-  "relativist": "A friendly relativist scientist portrait: wild, fluffy white hair, thoughtful eyes, warm mischievous smile. Wears a simple sweater or tweed jacket. Slightly whimsical, intellectual vibe. Chalkboard-style abstract equations and symbols faintly in the background. Not a real person. No text. Soft lighting, painterly illustration style.",
-  "inner_guide": "A compassionate inner guide portrait: kind, reassuring woman with soft eyes and a gentle smile, cozy sweater or shawl, warm ambient light, subtle dreamy background gradient, calm and nurturing vibe. Not a real person. No text, no logos. Painterly illustration style.",
-    "pattern_seer": "An intuitive pattern seer portrait: Perceptive woman with serene expression, subtle freckles or unique facial detail, simple elegant clothing, faint geometric motifs and flowing symbolic shapes in the background, quiet and insightful mood. Not a real person. No text. Painterly illustration style.",
-    "truth_teller": "A sharp-tongued truth teller portrait: confident woman with a wry half-smile, direct gaze, modern minimalist outfit (dark jacket or blazer), slightly dramatic lighting, clean background with subtle edgy texture. Not a real person. No text. Painterly illustration style.",
-    "somatic": "A somatic listener portrait: grounded woman with calm presence, relaxed posture, natural look, earth-tone clothing, soft daylight, subtle abstract shapes suggesting breath and body sensation in the background. Not a real person. No text. Painterly illustration style.",
-    "mythic": "A myth-weaving storyteller portrait: expressive woman with warm, luminous eyes, slightly dramatic but gentle presence, flowing hair or scarf, soft star-like bokeh and faint mythic symbols in the background, cinematic yet grounded mood. Not a real person. No text. Painterly illustration style.",
-    "skeptic": "A rational skeptic portrait: practical, friendly woman with an intelligent, reassuring expression, simple shirt and blazer, clean background with faint diagram-like lines or subtle chalkboard texture (no readable text). Not a real person. No text. Painterly illustration style.",
-    "muse": "A playful creative muse portrait: bright, upbeat woman with a joyful smile, colorful but soft outfit, whimsical dreamy background with gentle shapes and sparkles (no text), light and imaginative mood. Not a real person. No text. Painterly illustration style.",
-    "default": "A softly lit silhouette, gender neutral"
 }
 
 
