@@ -52,8 +52,8 @@ import uuid
 
 
 logger = logging.getLogger("dreamr")
-# logger.setLevel(logging.INFO)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
+# logger.setLevel(logging.DEBUG)
 logger.handlers.clear()
 
 log_dir = "/home/mk7193/dreamr"
@@ -2040,23 +2040,27 @@ def call_openai_with_retry(prompt, retries=3, delay=2):
                 raise
 
               
-def convert_dream_to_image_prompt(message, tone=None, quality="high"):
+def convert_dream_to_image_prompt(message, tone=None, quality="high", image_style_slug=None):
     if quality == "low":
         base_prompt = CATEGORY_PROMPTS["image_free"]
     else:
         base_prompt = CATEGORY_PROMPTS["image"]
   
     tone = tone.strip() if tone else None
-    logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
-    logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
 
     # for dall-e-3
     #style = TONE_TO_STYLE.get(tone, "Photo Realistic")
 
     # for gpt-image-1.5
-    style = random.choice(TONE_TO_STYLE.get(tone, TONE_TO_STYLE["Peaceful / gentle"]))
-
-    logger.debug(f"[convert_dream_to_image_prompt] Selected style: {style}")
+    # If user explicitly chose a style, bypass tone->style entirely
+    if image_style_slug:
+        style = pretty_from_slug(image_style_slug)
+        logger.debug(f"[convert_dream_to_image_prompt] User selected style: {style}")
+    else:
+        style = random.choice(TONE_TO_STYLE.get(tone, TONE_TO_STYLE["Peaceful / gentle"]))
+        logger.debug(f"[convert_dream_to_image_prompt] AI selected style: {style}")
+        logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
+        logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
 
     full_prompt = f"{base_prompt}\n\nRender the image in the style of \"{style}\".\n\nDream: {message}"
     response = client.chat.completions.create(
@@ -2327,7 +2331,18 @@ def validate_dream_text(dream_text: str) -> tuple[bool, str]:
         return False, "That doesn't look like a dream. Try typing a short description instead."
     return True, ""
 
+# helper to convert ugly slug name into pretty name for the AI
+def pretty_from_slug(slug: str) -> str:
+    normalized = slug.replace("_", ", ").replace("-", " ").strip()
+    if not normalized:
+        return slug
 
+    words = re.split(r"\s+", normalized)
+    words = [w for w in words if w]
+
+    return " ".join(w[:1].upper() + w[1:] for w in words)
+
+    
 # for interpreter addition
 DEFAULT_INTERPRETER_ID = "26"
 
@@ -2406,15 +2421,15 @@ def chat():
 
     message = data.get("message")
     interpreter_id = data.get("interpreter_id")
-    
+
     if not message:
         logger.debug("[WARN] Missing dream message.")
         return jsonify({"error": "Missing dream message."}), 400
 
     interp = get_interpreter_for_user(current_user.id, interpreter_id)
+
     logger.debug(f"{current_user.id} - {interpreter_id}")
     logger.debug(f"[get_interpreter_for_user] {interp}")
-    
 
     overlay = ""
     if interp:
@@ -2480,7 +2495,7 @@ def chat():
         if overlay:
             prompt = overlay + "\n\n" + prompt
             
-        logger.info(f"Sending {q} prompt to OpenAI: {prompt}")
+        # logger.debug(f"Sending {q} prompt to OpenAI: {prompt}")
         # logger.debug(f"Dream Analysis Prompt: {prompt}")
 
         response = call_openai_with_retry(prompt)
@@ -2796,6 +2811,8 @@ def generate_resized_image(input_path, output_path, size=(48, 48)):
 @app.post("/api/image_generate")
 @login_required
 def generate_dream_image():
+    # return jsonify({"error": "disabled for testing", "kind": "image"}), 402
+    
     is_pro = _user_is_pro(current_user.id)
 
     # Free user: gate before any work
@@ -2813,6 +2830,8 @@ def generate_dream_image():
     logger.info(" /api/image_generate called")
     data = request.get_json()
     dream_id = data.get("dream_id")
+
+    logger.debug(f"[generate_dream_image] - {data}")
 
     # 1) Input guard
     if not dream_id:
@@ -2834,10 +2853,14 @@ def generate_dream_image():
 
     message = dream.text
     tone = dream.tone
+    image_style_slug = (data.get("image_style") or "").strip() or None
 
     try:
         logger.info(f"Converting dream to {q} quality image prompt...")
-        image_prompt = convert_dream_to_image_prompt(message, tone, q)
+        logger.info(f"Style:  {image_style_slug}")
+        image_prompt = convert_dream_to_image_prompt(message, tone, q, image_style_slug=image_style_slug)
+        logger.info(f"[image prompt]: {image_prompt}")
+
         # logger.info("Sending image generation request...")
 
         # Supported values are: 'gpt-image-1', 'gpt-image-1-mini', 'gpt-image-0721-mini-alpha', 'dall-e-2', and 'dall-e-3'

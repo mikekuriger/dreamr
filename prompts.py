@@ -112,28 +112,22 @@ TONE_TO_STYLE = {
         "Minimalist fantasy illustration, airy composition, warm glow"
     ],
 
-    "Epic / heroic": [
-        "Cinematic fantasy concept art, dramatic lighting, painterly",
-        "Mythic oil painting, heroic scale, rich color depth",
-        "Illustrated epic fantasy poster, dynamic composition"
-    ],
-
-    "Whimsical / surreal": [
-        "Surreal storybook illustration, imaginative shapes, soft color",
-        "Whimsical children’s book art, dreamy proportions",
-        "Painterly surreal fantasy, floating elements, gentle distortion"
-    ],
-
-    "Nightmarish / dark": [
-        "Dark fairytale illustration, shadow-heavy, painterly",
-        "Surreal nightmare art, distorted forms, low light",
-        "Moody cinematic illustration, dream-horror atmosphere"
-    ],
-
     "Romantic / nostalgic": [
         "Impressionist painting, warm light, nostalgic mood",
         "Soft-focus oil painting, romantic atmosphere",
         "Vintage storybook illustration, faded tones"
+    ],
+    
+    "Elegant / ornate": [
+        "Art Nouveau–inspired illustration, flowing lines",
+        "Ornate oil painting, rich textures, classical elegance",
+        "Decorative fantasy illustration, intricate detail"
+    ],
+    
+    "Whimsical / surreal": [
+        "Surreal storybook illustration, imaginative shapes, soft color",
+        "Whimsical children’s book art, dreamy proportions",
+        "Painterly surreal fantasy, floating elements, gentle distortion"
     ],
 
     "Ancient / mythic": [
@@ -142,17 +136,31 @@ TONE_TO_STYLE = {
         "Epic mythic oil painting, timeless atmosphere"
     ],
 
+    "Epic / heroic": [
+        "Cinematic fantasy concept art, dramatic lighting, painterly",
+        "Mythic oil painting, heroic scale, rich color depth",
+        "Illustrated epic fantasy poster, dynamic composition"
+    ],
+
     "Futuristic / uncanny": [
         "Retrofuturistic concept art, uncanny atmosphere",
         "Cyberdream illustration, neon accents, soft focus",
         "Surreal sci-fi painting, liminal spaces"
     ],
 
-    "Elegant / ornate": [
-        "Art Nouveau–inspired illustration, flowing lines",
-        "Ornate oil painting, rich textures, classical elegance",
-        "Decorative fantasy illustration, intricate detail"
-    ]
+    "Nightmarish / dark": [
+        "Dark fairytale illustration, shadow-heavy, painterly",
+        "Surreal nightmare art, distorted forms, low light",
+        "Moody cinematic illustration, dream-horror atmosphere"
+    ],
+
+    # 'Just_For_Fun': [
+    #     "Photo Realistic",
+    #     "Steampunk",
+    #     "Concept art",
+    #     "Whimsical children’s book",
+    # ],
+    
 }
 
 # For Dall-e-3    
@@ -168,6 +176,44 @@ TONE_TO_STYLE = {
 #     "Futuristic / uncanny": "Cyberdream / retrofuturism",
 #     "Elegant / ornate": "Artistic vivid style"
 # }
+
+IMG_STYLE = [
+    "Soft watercolor illustration, pastel tones, gentle lighting",
+    "Dreamlike oil painting, muted colors, smooth brush strokes",
+    "Minimalist fantasy illustration, airy composition, warm glow",
+    "Cinematic fantasy concept art, dramatic lighting, painterly",
+    "Mythic oil painting, heroic scale, rich color depth",
+    "Illustrated epic fantasy poster, dynamic composition",
+    "Surreal storybook illustration, imaginative shapes, soft color",
+    "Whimsical children’s book art, dreamy proportions",
+    "Painterly surreal fantasy, floating elements, gentle distortion",
+    "Dark fairytale illustration, shadow-heavy, painterly",
+    "Surreal nightmare art, distorted forms, low light",
+    "Moody cinematic illustration, dream-horror atmosphere",
+    "Impressionist painting, warm light, nostalgic mood",
+    "Soft-focus oil painting, romantic atmosphere",
+    "Vintage storybook illustration, faded tones",
+    "Mythological fantasy illustration, classical composition",
+    "Ancient fresco–inspired painting, earthy tones",
+    "Epic mythic oil painting, timeless atmosphere",
+    "Retrofuturistic concept art, uncanny atmosphere",
+    "Cyberdream illustration, neon accents, soft focus",
+    "Surreal sci-fi painting, liminal spaces",
+    "Art Nouveau–inspired illustration, flowing lines",
+    "Ornate oil painting, rich textures, classical elegance",
+    "Decorative fantasy illustration, intricate detail",
+    "Photo Realistic",
+    "Steampunk",
+    "Artistic vivid style",
+    "Watercolor fantasy",
+    "Concept art",
+    "Whimsical children’s book",
+    "Dark fairytale",
+    "Impressionist art",
+    "Mythological fantasy",
+    "Cyberdream / retrofuturism",
+    "Art Nouveau or Oil Painting"
+]
 
 # for Icons
 # Example: global style prompt (same for all icons)
