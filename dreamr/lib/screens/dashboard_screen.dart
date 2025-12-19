@@ -428,6 +428,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     widget.onAnalyzingChange?.call(true); // 👈 disable/hide nav
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final imageStyle = prefs.getString('selected_image_style');
+
       final result = await ApiService.submitDream(
         text,
         interpreterId: _selectedInterpreter?.id,
@@ -451,14 +454,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         _imageGenerating = shouldGen;
       });
 
-      final prefs = await SharedPreferences.getInstance();
       await prefs.remove('draft_text');
       dreamDataChanged.value = true;
       _loadQuota(); // refresh quota after submission
       _controller.clear();
 
       if (shouldGen) {
-        await _generateDreamImage(dreamId);
+        await _generateDreamImage(dreamId, imageStyle: imageStyle);
       } else {
         if (placeholderUrl != null && placeholderUrl.isNotEmpty) {
           setState(() => _dreamImagePath = placeholderUrl);
@@ -480,9 +482,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> _generateDreamImage(int dreamId) async {
+  Future<void> _generateDreamImage(int dreamId, {String? imageStyle}) async {
     try {
-      final imagePath = await ApiService.generateDreamImage(dreamId);
+      final imagePath = await ApiService.generateDreamImage(dreamId, imageStyle: imageStyle);
       setState(() {
         _dreamImagePath = imagePath;
         _imageGenerating = false;

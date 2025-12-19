@@ -445,12 +445,15 @@ class ApiService {
   }
 
   // Submit a dream to the AI
-  static Future<Map<String, dynamic>> submitDream(String text, {int? interpreterId}) async {
+  static Future<Map<String, dynamic>> submitDream(
+    String text, {
+    int? interpreterId,
+  }) async {
     final Map<String, dynamic> requestData = {'message': text};
     if (interpreterId != null) {
       requestData['interpreter_id'] = interpreterId;
     }
-    
+
     final response = await DioClient.dio.post(
       '/api/chat',
       data: requestData,
@@ -480,12 +483,21 @@ class ApiService {
   }
 
   // Generate Image
-  static Future<String> generateDreamImage(int dreamId) async {
+  static Future<String> generateDreamImage(
+    int dreamId, {
+    String? imageStyle,
+  }) async {
     final t0 = DateTime.now();
     try {
+      final payload = <String, dynamic>{
+        "dream_id": dreamId,
+        if (imageStyle != null && imageStyle.trim().isNotEmpty)
+          "image_style": imageStyle.trim(),
+      };
+
       final res = await DioClient.dio.post(
         '/api/image_generate',
-        data: {"dream_id": dreamId},
+        data: payload,
         options: Options(
           sendTimeout: const Duration(seconds: 30),
           receiveTimeout: const Duration(seconds: 90),
