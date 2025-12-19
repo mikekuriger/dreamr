@@ -457,7 +457,7 @@ const List<String> _defaultStyleSubjects = [
   // 'couple',
   // 'tara',
   // 'treehouse',
-  'tub',
+  'tub_hires',
   // 'well',
 ];
 

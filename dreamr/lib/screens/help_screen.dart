@@ -124,6 +124,20 @@ class HelpScreen extends StatelessWidget {
                 '• Tap on an image to view it in full screen\n'
                 '• Share images with friends directly from the gallery',
             ),
+
+            // Image Styles Section
+            _buildSection(
+              title: 'Image Styles',
+              icon: Icons.palette_rounded,
+              content: 'Customize the visual look of your dream images:\n\n'
+                '• Open the hamburger menu → Image Styles\n'
+                '• Choose Dreamr✨ decides to let the AI match a style to each dream’s tone\n'
+                '• Or pick a fixed preset to keep all future dream images visually consistent\n'
+                '• Browse styles grouped by vibe (Peaceful, Epic, Nightmarish, etc.)\n'
+                '• Preview example thumbnails before selecting (cached on-device for speed)\n'
+                '• Tap the selected style again to clear it and go back to AI selection\n'
+                '• Your choice is saved automatically and used for newly generated images',
+            ),
             
             // Life Events Section
             _buildSection(
@@ -182,7 +196,7 @@ class HelpScreen extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'Dreamr ✨ v1.0.7+13\n© 2025 Michael Kuriger',          // version number
+                      'Dreamr ✨ v1.0.8+14\n© 2025 Michael Kuriger',          // version number
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color.fromARGB(200, 122, 209, 255),
