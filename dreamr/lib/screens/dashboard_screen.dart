@@ -161,6 +161,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   String? _lastDreamText;
   int? _lastDreamId;
 
+  // Discussion thread for the last analyzed dream (shown on Dashboard under analysis)
+  List<Map<String, dynamic>> _lastDiscussItems = const [];
+  bool _lastDiscussLoading = false;
+
   // Selected interpreter
   Interpreter? _selectedInterpreter;
 
@@ -438,6 +442,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final analysis = result['analysis'] as String;
       final dreamId = int.parse(result['dream_id'].toString());
       setState(() { _lastDreamId = dreamId; });
+      _loadLastDiscuss(); // start fresh / pull any existing discuss history
 
       final shouldGen = (result['should_generate_image'] as bool?) ?? false;
       final isQuestion  = result['is_question'] == true; // optional: for copy/UX only
@@ -493,6 +498,252 @@ class _DashboardScreenState extends State<DashboardScreen>
       setState(() => _imageGenerating = false);
     }
   }
+
+  Future<void> _loadLastDiscuss() async {
+    if (_isPro != true) {
+      // Discuss is a Pro feature; don't load/show discussion for free users.
+      if (mounted) {
+        setState(() {
+          _lastDiscussItems = const [];
+          _lastDiscussLoading = false;
+        });
+      }
+      return;
+    }
+
+    final dreamId = _lastDreamId;
+    if (dreamId == null) return;
+
+    setState(() => _lastDiscussLoading = true);
+    try {
+      final items = await ApiService.fetchDiscuss(dreamId);
+      if (!mounted) return;
+      setState(() {
+        _lastDiscussItems = items;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _lastDiscussItems = const [];
+      });
+    } finally {
+      if (mounted) setState(() => _lastDiscussLoading = false);
+    }
+  }
+
+  // Open a popup text box to discuss the last analyzed dream.
+  Future<void> _openDiscussSheet() async {
+    if (_isPro != true) {
+      await _showDiscussProUpsell();
+      return;
+    }
+
+    final dreamId = _lastDreamId;
+    if (dreamId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Analyze a dream first to discuss it.')),
+      );
+      return;
+    }
+
+    final controller = TextEditingController();
+    bool sending = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black87,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            Future<void> send() async {
+              final text = controller.text.trim();
+              if (text.isEmpty || sending) return;
+
+              setModalState(() => sending = true);
+              try {
+                final res = await ApiService.discussDream(
+                  dreamId,
+                  text,
+                  interpreterId: _selectedInterpreter?.id,
+                );
+
+                final reply = (res['response'] as String?)?.trim() ?? '';
+                if (!mounted) return;
+
+                dreamDataChanged.value = true; // so journal refresh picks it up
+                controller.clear();
+
+                // Refresh Dashboard discussion section with the latest thread.
+                await _loadLastDiscuss();
+
+                Navigator.of(ctx).pop();
+
+                await showDialog<void>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Dreamr'),
+                    content: SingleChildScrollView(
+                      child: SelectableText(reply.isEmpty ? '(empty response)' : reply),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                );
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Discussion submission failed')),
+                );
+              } finally {
+                if (mounted) setModalState(() => sending = false);
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Discuss this dream',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (sending)
+                          const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      maxLines: null,
+                      decoration: const InputDecoration(
+                        hintText: 'Ask a question or add context…',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                        filled: true,
+                      ),
+                      style: const TextStyle(color: Colors.black),
+                      enabled: !sending,
+                      onSubmitted: (_) => send(),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: sending ? null : send,
+                          child: const Text('Send'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: sending ? null : () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _showDiscussProUpsell() async {
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black87,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Explore this dream further',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'To discuss this dream further, you’ll need Dreamr Pro.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.pushNamed(context, '/subscription');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        child: const Text('Go deeper'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Not now'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   
   // Show error snackbar - only for critical errors
   void _showErrorSnackBar(String message) {
@@ -971,6 +1222,67 @@ class _DashboardScreenState extends State<DashboardScreen>
                             p: const TextStyle(color: Colors.black87),
                           ),
                         ),
+
+                        if (_isPro == true && _lastDiscussLoading) ...[
+                          const SizedBox(height: 12),
+                          const Center(
+                            child: SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        ] else if (_isPro == true && _lastDiscussItems.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Discussion:',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          ..._lastDiscussItems.map((it) {
+                            final userTxt = (it['text'] ?? '').toString().trim();
+                            final aiTxt = (it['response'] ?? '').toString().trim();
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (userTxt.isNotEmpty) ...[
+                                    const Text(
+                                      'You:',
+                                      style: TextStyle(
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    SelectableText(
+                                      userTxt,
+                                      style: const TextStyle(color: Colors.black87),
+                                    ),
+                                    const SizedBox(height: 4),
+                                  ],
+                                  if (aiTxt.isNotEmpty) ...[
+                                    const Text(
+                                      'Dreamr:',
+                                      style: TextStyle(
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    SelectableText(
+                                      aiTxt,
+                                      style: const TextStyle(color: Colors.black87),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ],
                         if (_imageGenerating) ...[
                           const SizedBox(height: 12),
                           const Text(
@@ -995,68 +1307,74 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   const Icon(Icons.broken_image, size: 48),
                             ),
                           ),
-              // Share Dream
-                          // Row(
-                          //   children: [
-                          //     ElevatedButton.icon(
-                          //       onPressed: () => _shareDreamImage(includeText: false),
-                          //       icon: const Icon(Icons.share, size: 16),
-                          //       label: const Text('Share Image'),
-                          //       style: ElevatedButton.styleFrom(
-                          //         backgroundColor: Color.fromARGB(255, 75, 3, 143),
-                          //         foregroundColor: Colors.white,
-                          //         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          //         minimumSize: const Size(0, 0),
-                          //         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          //         textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                          //         elevation: 0,
-                          //       ),
-                          //     ),
-                          //     PopupMenuButton<String>(
-                          //       icon: const Icon(Icons.share),
-                          //       onSelected: (v) => _shareDreamImage(includeText: v == 'with_text'),
-                          //       itemBuilder: (_) => const [
-                          //         PopupMenuItem(value: 'image_only', child: Text('Share image')),
-                          //         PopupMenuItem(value: 'with_text',  child: Text('Share image + dream')),
-                          //       ],
-                          //     ),
-                          //   ],
-                          // ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: PopupMenuButton<String>(
-                              padding: EdgeInsets.zero,
-                              // tooltip: 'Share ✨',
-                              offset: const Offset(0, 32),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              onSelected: (v) {
-                                final origin = _originFromKey(_shareAnchorKey);
-                                _shareDreamImage(includeText: v == 'with_text', origin: origin);
-                              },
-                              itemBuilder: (ctx) => const [
-                                PopupMenuItem(value: 'image_only', child: Text('Share image')),
-                                PopupMenuItem(value: 'with_text',  child: Text('Share image + dream')),
-                              ],
-                              // Custom trigger: icon + text
-                              child: Container(
-                                key: _shareAnchorKey,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: const Color.fromARGB(255, 75, 3, 143), // match your button color
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Row(
+                        ],
+
+                        // Discuss + Share actions (hide while image is generating)
+                        if (!_imageGenerating) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: (_loading || _imageGenerating || _lastDreamId == null)
+                                    ? null
+                                    : (_isPro == true ? _openDiscussSheet : _showDiscussProUpsell),
+                                icon: const Icon(Icons.forum, size: 16),
+                                label: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    // Icon(Icons.share, size: 16, color: Color.fromARGB(255, 75, 3, 143)),
-                                    Text('Share', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                                    SizedBox(width: 6),
-                                    Icon(Icons.share, size: 16, color: Colors.white),
+                                    const Text('Discuss'),
+                                    if (_isPro != true) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.18),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+                                        ),
+                                        child: const Text(
+                                          'Pro',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  minimumSize: const Size(0, 0),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                  elevation: 0,
+                                ),
                               ),
-                            ),
+                              const Spacer(),
+                              PopupMenuButton<String>(
+                                padding: EdgeInsets.zero,
+                                offset: const Offset(0, 32),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                onSelected: (v) {
+                                  final origin = _originFromKey(_shareAnchorKey);
+                                  _shareDreamImage(includeText: v == 'with_text', origin: origin);
+                                },
+                                itemBuilder: (ctx) => const [
+                                  PopupMenuItem(value: 'image_only', child: Text('Share image')),
+                                  PopupMenuItem(value: 'with_text',  child: Text('Share image + dream')),
+                                ],
+                                child: Container(
+                                  key: _shareAnchorKey,
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color.fromARGB(255, 75, 3, 143),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.share, size: 18, color: Colors.white),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ],

@@ -84,6 +84,8 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
     try {
       final interpreters = await ApiService.fetchInterpreters();
 
+      if (!mounted) return;
+
       setState(() {
         _interpreters = interpreters;
         _loading = false;
@@ -100,6 +102,9 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
       }
     } catch (e) {
       debugPrint('Failed to load interpreters: $e');
+
+      if (!mounted) return;
+
       setState(() {
         _loading = false;
       });
@@ -114,6 +119,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
   Future<void> _loadFilters() async {
     final prefs = await SharedPreferences.getInstance();
     final filter = prefs.getString('interpreter_filter');
+    if (!mounted) return;
     setState(() {
       _selectedFilter = filter ?? 'grounded'; // Default to 'grounded' if none selected
     });
@@ -138,6 +144,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
   Future<void> _loadSelectedInterpreter() async {
     final prefs = await SharedPreferences.getInstance();
     final selectedId = prefs.getInt('selected_interpreter_id');
+    if (!mounted) return;
     setState(() {
       _selectedInterpreterId = selectedId;
     });

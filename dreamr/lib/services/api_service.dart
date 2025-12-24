@@ -553,6 +553,61 @@ class ApiService {
     }
   }
 
+  // Discuss an existing dream (follow-up chat)
+  static Future<Map<String, dynamic>> discussDream(
+    int dreamId,
+    String text, {
+    int? interpreterId,
+  }) async {
+    final Map<String, dynamic> requestData = {'text': text};
+    if (interpreterId != null) {
+      requestData['interpreter_id'] = interpreterId;
+    }
+
+    final response = await DioClient.dio.post(
+      '/api/dreams/$dreamId/discuss',
+      data: requestData,
+      options: Options(contentType: Headers.jsonContentType),
+    );
+
+    if (response.statusCode == 200) {
+      final data = response.data as Map<String, dynamic>;
+      return {
+        'dream_id': (data['dream_id'] ?? '').toString(),
+        'discuss_id': (data['discuss_id'] ?? '').toString(),
+        'response': data['response'] ?? '',
+      };
+    }
+
+    // If you want quota enforcement for discuss too, keep this; otherwise delete it.
+    // if (response.statusCode == 402) {
+    //   final m = response.data is Map ? Map<String, dynamic>.from(response.data) : const {};
+    //   final kind = (m['kind']?.toString() ?? 'text');
+    //   final iso = m['next_reset_iso']?.toString();
+    //   throw QuotaExhaustedException(
+    //     kind: kind,
+    //     nextReset: (iso != null && iso.isNotEmpty) ? DateTime.parse(iso) : null,
+    //   );
+    // }
+
+    throw Exception('Dream discussion failed: ${response.statusMessage}');
+  }
+
+  // Get discussions from DB
+  static Future<List<Map<String, dynamic>>> fetchDiscuss(int dreamId) async {
+    final response = await DioClient.dio.get(
+      '/api/dreams/$dreamId/discuss',
+      options: Options(contentType: Headers.jsonContentType),
+    );
+    if (response.statusCode == 200) {
+      final data = response.data as Map<String, dynamic>;
+      final items = (data['items'] as List?) ?? const [];
+      return items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+    throw Exception('Fetch discuss failed: ${response.statusMessage}');
+  }
+
+
   // Delete User Account
   static Future<void> deleteAccount() async {
     final res = await DioClient.dio.post(

@@ -55,8 +55,8 @@ android {
         //targetSdk = flutter.targetSdkVersion
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 14                        // also change in pubspec.yaml
-        versionName = "1.0.8"                   // also change in pubspec.yaml
+        versionCode = 15                        // also change in pubspec.yaml
+        versionName = "1.0.9"                   // also change in pubspec.yaml
     }
 
     signingConfigs {

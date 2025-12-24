@@ -9,6 +9,11 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// import 'package:provider/provider.dart';
+// import 'package:dreamr/models/interpreter.dart'; // adjust path to your actual model file
+
 
 
 class DreamJournalWidget extends StatefulWidget { 
@@ -245,9 +250,28 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
   bool _loading = true;
   bool get _anyExpanded => _expanded.values.any((v) => v);
 
+  final Map<int, List<Map<String, dynamic>>> _discussCache = {};
+  final Set<int> _discussLoading = {};
+
+  // Discuss is a Pro feature
+  bool? _isPro;
+
+  Future<void> _loadProStatus() async {
+    try {
+      final status = await ApiService.getSubscriptionStatus();
+      if (!mounted) return;
+      setState(() => _isPro = status.isActive);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isPro = false);
+    }
+  }
+
+
   @override
   void initState() {
     super.initState();
+    _loadProStatus();
     if (widget.filteredDreams != null) {
       _loading = false;
       widget.onDreamsLoaded?.call();
@@ -433,14 +457,238 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     }
   }
 
-    // Drop-in helper with fallback
-    Widget netImageWithFallback(
+  // Post discussions
+  Future<void> _openDiscussSheet(Dream dream) async {
+    if (_isPro != true) {
+      await _showDiscussProUpsell();
+      return;
+    }
+
+    final controller = TextEditingController();
+    final prefs = await SharedPreferences.getInstance();
+    final selectedId = prefs.getInt('selected_interpreter_id');
+
+    bool sending = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black87,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            Future<void> send() async {
+              final text = controller.text.trim();
+              if (text.isEmpty || sending) return;
+
+              setModalState(() => sending = true);
+              try {
+                final res = await ApiService.discussDream(
+                  dream.id,
+                  text,
+                  interpreterId: selectedId,
+                );
+
+                final reply = (res['response'] as String?)?.trim() ?? '';
+                if (!mounted) return;
+
+                _discussCache.remove(dream.id);
+                await _loadDiscussIfNeeded(dream.id);
+
+                Navigator.of(ctx).pop(); // close sheet first
+
+                // Show reply (simple test UX)
+                await showDialog<void>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Dreamr'),
+                    content: SingleChildScrollView(
+                      child: SelectableText(reply.isEmpty ? '(empty response)' : reply),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Discussion submission failed')),
+                );
+              } finally {
+                if (mounted) setModalState(() => sending = false);
+              }
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  top: 12,
+                  bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Discuss this dream',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (sending)
+                          const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      maxLines: null,
+                      decoration: const InputDecoration(
+                        hintText: 'Ask a question or add context…',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: OutlineInputBorder(),
+                        filled: true,
+                      ),
+                      style: const TextStyle(color: Colors.black),
+                      enabled: !sending,
+                      onSubmitted: (_) => send(),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: sending ? null : send,
+                          child: const Text('Send'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: sending ? null : () => Navigator.of(ctx).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _showDiscussProUpsell() async {
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black87,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Continue this conversation',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'To discuss this dream further, you’ll need Dreamr Pro.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.pushNamed(context, '/subscription');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        child: const Text('Go deeper'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: const Text('Not now'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Get discussions
+  Future<void> _loadDiscussIfNeeded(int dreamId) async {
+    if (_isPro != true) return;
+    if (_discussCache.containsKey(dreamId) || _discussLoading.contains(dreamId)) return;
+    _discussLoading.add(dreamId);
+    try {
+      final items = await ApiService.fetchDiscuss(dreamId);
+      if (!mounted) return;
+      setState(() => _discussCache[dreamId] = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _discussCache[dreamId] = const []);
+    } finally {
+      _discussLoading.remove(dreamId);
+    }
+  }
+
+
+
+  // Drop-in helper with fallback
+  Widget netImageWithFallback(
     String? url, {
     double? width,
     double? height,
     BoxFit fit = BoxFit.cover,
     BorderRadius? radius,
-  }) {
+    }) {
     final widget = (url == null || url.isEmpty)
         ? Image.asset('assets/images/missing.png', width: width, height: height, fit: fit)
         : Image.network(
@@ -560,6 +808,8 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
             final toneStyle = _getToneStyle(dream.tone);
             final formattedDate = DateFormat('EEE, MMM d, y h:mm a')
                 .format(dream.createdAt.toLocal());
+            final discussItems = _discussCache[dream.id] ?? const [];
+            final discussLoading = _discussLoading.contains(dream.id);
 
             return Padding(
               key: Key('dream-${dream.id}'), // Add unique key for proper widget reuse
@@ -592,6 +842,9 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                         setState(() {
                           _expanded[dream.id] = !isExpanded;
                         });
+                        if (!isExpanded) {
+                          _loadDiscussIfNeeded(dream.id);
+                        }
                       },
                       child: widget.embeddedInScrollView
                           // Main journal view: show tile image + text like before
@@ -834,6 +1087,59 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                     const SizedBox(height: 6),
                                   ],
 
+                                  // Discussion (Pro only)
+                                  if (_isPro == true && discussLoading) ...[
+                                    const SizedBox(height: 6),
+                                    const Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+                                    const SizedBox(height: 6),
+                                  ] else if (_isPro == true && discussItems.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "Discussion:",
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: toneStyle.text,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+
+                                    ...discussItems.map((it) {
+                                      final userTxt = (it['text'] ?? '').toString().trim();
+                                      final aiTxt   = (it['response'] ?? '').toString().trim();
+
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 10),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            if (userTxt.isNotEmpty) ...[
+                                              Text("You:", style: TextStyle(fontWeight: FontWeight.bold, color: toneStyle.text, fontSize: 12)),
+                                              const SizedBox(height: 2),
+                                              SelectableText(userTxt, style: TextStyle(color: toneStyle.text, fontSize: 13)),
+                                              const SizedBox(height: 6),
+                                            ],
+                                            if (aiTxt.isNotEmpty) ...[
+                                              Text("Dreamr:", style: TextStyle(fontWeight: FontWeight.bold, color: toneStyle.text, fontSize: 12)),
+                                              const SizedBox(height: 2),
+                                              MarkdownBody(
+                                                data: aiTxt,
+                                                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                                                  p: TextStyle(color: toneStyle.text, fontSize: 13),
+                                                  strong: TextStyle(color: toneStyle.text, fontWeight: FontWeight.bold),
+                                                  em: TextStyle(color: toneStyle.text, fontStyle: FontStyle.italic),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    }),
+
+                                    const SizedBox(height: 6),
+                                  ],
+
+
                                   // Dream Notes
                                   if (dream.notes.isNotEmpty) ...[
                                     Text(
@@ -914,6 +1220,30 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                         ),
                                       ),
                                       const SizedBox(width: 8),
+
+                                      // Discuss button (no Pro pill here; row is space-constrained)
+                                      ElevatedButton.icon(
+                                        onPressed: () => _openDiscussSheet(dream),
+                                        icon: const Icon(Icons.forum, size: 16),
+                                        label: const Text('Discuss'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color.fromARGB(255, 75, 3, 143),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          minimumSize: const Size(0, 0),
+                                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      
 
                                       // Share button with popup menu
                                       Material(
