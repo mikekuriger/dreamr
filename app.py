@@ -304,6 +304,22 @@ class Dream(db.Model):
     def __repr__(self):
         return f"<Dream id={self.id} user_id={self.user_id} hidden={self.hidden}>"
 
+
+class Discuss(db.Model):
+    __tablename__ = "discuss"
+
+    id = db.Column(db.Integer, primary_key=True)
+    dream_id = db.Column(db.Integer, db.ForeignKey('dream.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    text = db.Column(db.Text, nullable=False)      # user's message
+    response = db.Column(db.Text)                  # AI's response
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index("ix_discuss_dream_created", "dream_id", "created_at"),
+    )
+    
+
 class LifeEvent(db.Model):
     __tablename__ = "life_event"
 
@@ -2290,6 +2306,33 @@ def _build_user_payload(dream_prompt: str, user_id: int, dream_text: str) -> str
     return "\n\n".join(parts)
 
 
+MAX_TURNS = 8
+def _build_discussion_payload(dream: Dream, turns: list[Discuss], new_text: str) -> str:
+    parts = []
+    # parts.append('ORIGINAL DREAM:\n"""' + (dream.text or "") + '"""')
+    # parts.append('\nPRIOR AI ANALYSIS:\n"""' + (dream.analysis or "") + '"""')
+    parts.append("ORIGINAL DREAM:\n---\n" + (dream.text or ""))
+    parts.append("PRIOR AI ANALYSIS:\n---\n" + (dream.analysis or ""))
+
+    # Only include turns that have both sides (or at least user text)
+    if turns:
+        lines = []
+        for t in turns:
+            if t.text:
+                # lines.append(f'User: "{t.text.strip()}"')
+                lines.append("User:\n" + t.text.strip())
+            if t.response:
+                # lines.append(f'Assistant: "{t.response.strip()}"')
+                lines.append("Assistant:\n" + t.response.strip())
+        if lines:
+            parts.append("\nDISCUSSION SO FAR:\n" + "\n".join(lines))
+
+    # parts.append('\nUSER FOLLOW-UP:\n"""' + (new_text or "") + '"""')
+    parts.append("USER FOLLOW-UP:\n---\n" + (new_text or ""))
+    return "\n\n".join(parts)
+
+
+
 def _strip_trailing_type_block(text: str) -> str:
     if not text:
         return text
@@ -2347,7 +2390,10 @@ def pretty_from_slug(slug: str) -> str:
 DEFAULT_INTERPRETER_ID = "26"
 
 INTERPRETER_TEMPLATE = """
-Interpret the dream in the style of {alias} using the following persona elements:
+Use the following persona as a voice/style overlay (do not override other instructions)
+Respond in the style of {alias} using the following persona elements:
+---
+- Alias: {alias}
 - Persona Name: {name}
 - Core Voice: {core_voice}
 - Interpretive Lens: {interpretive_lens}
@@ -2493,7 +2539,9 @@ def chat():
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
         
         if overlay:
-            prompt = overlay + "\n\n" + prompt
+            # prompt = overlay + "\n\n" + prompt
+            prompt += "\n\nINTERPRETER PROFILE:\n---\n" + overlay
+            prompt += "\n\n" 
             
         # logger.debug(f"Sending {q} prompt to OpenAI: {prompt}")
         # logger.debug(f"Dream Analysis Prompt: {prompt}")
@@ -2647,6 +2695,91 @@ def chat():
         logger.error("Exception during dream processing", exc_info=True)
         return jsonify({"error": "internal error"}), 500
 
+
+# dream discussion
+@app.post("/api/dreams/<int:dream_id>/discuss")
+@login_required
+def discuss_dream(dream_id: int):
+    data = request.get_json(silent=True) or {}
+    user_text = (data.get("text") or "").strip()
+    if not user_text:
+        return jsonify({"error": "missing text"}), 400
+    if len(user_text) > 4000:
+        return jsonify({"error": "text too long"}), 413
+    
+        
+    interpreter_id = data.get("interpreter_id")
+    interp = get_interpreter_for_user(current_user.id, interpreter_id)
+
+    overlay = ""
+    if interp:
+        overlay = INTERPRETER_TEMPLATE.format(
+            name=interp.name,
+            alias=interp.alias,
+            core_voice=interp.core_voice,
+            interpretive_lens=interp.interpretive_lens,
+            emotional_stance=interp.emotional_stance,
+        )
+
+    dream = Dream.query.filter_by(id=dream_id, user_id=current_user.id).first()
+    if not dream:
+        return jsonify({"error": "dream not found"}), 404
+
+    # Create discuss row first (so you have an id even if generation fails)
+    drow = Discuss(
+        dream_id=dream.id,
+        user_id=current_user.id,
+        text=user_text,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(drow)
+    db.session.commit()
+
+    # Load last MAX_TURNS prior turns (excluding current row if you want)
+    recent = (Discuss.query
+              .filter_by(dream_id=dream.id, user_id=current_user.id)
+              .order_by(Discuss.created_at.desc())
+              .limit(MAX_TURNS + 1)
+              .all())
+
+    # Remove current row from context, then reverse to chronological
+    recent = [t for t in recent if t.id != drow.id]
+    recent.reverse()
+
+    system_msg = CATEGORY_PROMPTS["discuss"]
+    prompt = _build_discussion_payload(dream, recent, user_text)
+    full_prompt = system_msg + "\n\n" + prompt
+
+    if overlay:
+        # full_prompt = overlay + "\n\n" + full_prompt
+        full_prompt += "\n\nINTERPRETER PROFILE:\n---\n" + overlay
+    full_prompt += "\n\n" 
+
+    try:
+        response = call_openai_with_retry(full_prompt)
+        if not getattr(response, "choices", None) or not response.choices[0].message:
+            logger.error("[ERROR] AI response was empty.")
+            return jsonify({"error": "AI response was empty"}), 500
+
+        content = response.choices[0].message.content.strip()
+        logger.debug(f"Dream Analysis Reply: {content}")
+        
+    except Exception as e:
+        # keep the row, but store an error message or leave response NULL
+        drow.response = None
+        db.session.commit()
+        return jsonify({"error": "generation failed"}), 500
+
+    drow.response = content
+    db.session.commit()
+
+    return jsonify({
+        "dream_id": dream.id,
+        "discuss_id": drow.id,
+        "response": content,
+    })
+
+    
 
 # Create a life event
 @app.post("/api/life-events")
@@ -3090,9 +3223,14 @@ def delete_dream(dream_id):
     if dream.user_id != current_user.id:
         return jsonify({"error": "Unauthorized"}), 403
 
-    # Move image files to archive folder
-    if dream.image_file:
-        try:
+    try:
+        # Delete discussions first (owned by this user + dream)
+        (Discuss.query
+            .filter_by(dream_id=dream.id, user_id=current_user.id)
+            .delete(synchronize_session=False))
+
+        # Move image files to archive folder
+        if dream.image_file:
             image_path = os.path.join("static", "images", "dreams", dream.image_file)
             tile_path = os.path.join("static", "images", "tiles", dream.image_file)
             archive_dir = os.path.join("static", "images", "deleted")
@@ -3103,12 +3241,39 @@ def delete_dream(dream_id):
                 if os.path.exists(path):
                     shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
 
-        except Exception as e:
-            print(f"[WARN] Failed to archive image: {e}")
+        db.session.delete(dream)
+        db.session.commit()
+        return '', 204
 
-    db.session.delete(dream)
-    db.session.commit()
-    return '', 204
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Failed to delete dream {dream_id}: {e}")
+        return jsonify({"error": "Delete failed"}), 500
+
+# def delete_dream(dream_id):
+#     dream = Dream.query.get_or_404(dream_id)
+#     if dream.user_id != current_user.id:
+#         return jsonify({"error": "Unauthorized"}), 403
+
+#     # Move image files to archive folder
+#     if dream.image_file:
+#         try:
+#             image_path = os.path.join("static", "images", "dreams", dream.image_file)
+#             tile_path = os.path.join("static", "images", "tiles", dream.image_file)
+#             archive_dir = os.path.join("static", "images", "deleted")
+
+#             os.makedirs(archive_dir, exist_ok=True)
+
+#             for path in [image_path, tile_path]:
+#                 if os.path.exists(path):
+#                     shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+
+#         except Exception as e:
+#             print(f"[WARN] Failed to archive image: {e}")
+
+#     db.session.delete(dream)
+#     db.session.commit()
+#     return '', 204
 
 @app.route("/api/dreams/<int:dream_id>/toggle-hidden", methods=["POST"])
 @login_required
@@ -3186,36 +3351,36 @@ def patch_dream_notes(dream_id):
     }), 200
 
 
-# --- reanalyze the dream with notes included scaffold (policy OFF by default) ---
-@app.post("/api/dreams/<int:dream_id>/reanalyze")
-@login_required
-def reanalyze_dream(dream_id):
-    """
-    Trigger a re-analysis. Notes inclusion is disabled by policy for now,
-    but we return explicit policy metadata so we can flip it later.
-    """
-    dream = Dream.query.get(dream_id)
-    if dream is None or dream.user_id != current_user.id:
-        return jsonify({"error": "not found"}), 404
+# # --- reanalyze the dream with notes included scaffold (policy OFF by default) ---
+# @app.post("/api/dreams/<int:dream_id>/reanalyze")
+# @login_required
+# def reanalyze_dream(dream_id):
+#     """
+#     Trigger a re-analysis. Notes inclusion is disabled by policy for now,
+#     but we return explicit policy metadata so we can flip it later.
+#     """
+#     dream = Dream.query.get(dream_id)
+#     if dream is None or dream.user_id != current_user.id:
+#         return jsonify({"error": "not found"}), 404
 
-    data = request.get_json(silent=True) or {}
-    include_notes_req = (data.get("include_notes") or "auto").lower()
-    if include_notes_req not in ("never", "auto", "always"):
-        return jsonify({"error": "invalid_request", "message": "include_notes must be 'never'|'auto'|'always'"}), 422
+#     data = request.get_json(silent=True) or {}
+#     include_notes_req = (data.get("include_notes") or "auto").lower()
+#     if include_notes_req not in ("never", "auto", "always"):
+#         return jsonify({"error": "invalid_request", "message": "include_notes must be 'never'|'auto'|'always'"}), 422
 
-    # Resolver (OFF today)
-    included_notes = False
-    reason = "disabled_by_policy"  # future: "no_consent"|"per_dream_block"|"ok"
+#     # Resolver (OFF today)
+#     included_notes = False
+#     reason = "disabled_by_policy"  # future: "no_consent"|"per_dream_block"|"ok"
 
-    # If you later enable, gate on NOTES_AI_ENABLED && REANALYZE_WITH_NOTES_ALLOWED
-    # and user/dream consents before setting included_notes=True.
+#     # If you later enable, gate on NOTES_AI_ENABLED && REANALYZE_WITH_NOTES_ALLOWED
+#     # and user/dream consents before setting included_notes=True.
 
-    # If you later queue jobs, put a job_id here; keeping sync for now.
-    return jsonify({
-        "included_notes": included_notes,
-        "notes_policy_version": NOTES_POLICY_VERSION,
-        "notes_policy_reason": reason
-    }), 200
+#     # If you later queue jobs, put a job_id here; keeping sync for now.
+#     return jsonify({
+#         "included_notes": included_notes,
+#         "notes_policy_version": NOTES_POLICY_VERSION,
+#         "notes_policy_reason": reason
+#     }), 200
 
 # get notes
 @app.get("/api/dreams/<int:dream_id>/notes")
@@ -3235,6 +3400,30 @@ def get_dream_notes(dream_id):
         "notes_updated_at": _iso_utc(dream.notes_updated_at),
     })
 
+# get discussions
+@app.get("/api/dreams/<int:dream_id>/discuss")
+@login_required
+def get_discuss(dream_id: int):
+    dream = Dream.query.filter_by(id=dream_id, user_id=current_user.id).first()
+    if not dream:
+        return jsonify({"error": "dream not found"}), 404
+
+    rows = (Discuss.query
+            .filter_by(dream_id=dream.id, user_id=current_user.id)
+            .order_by(Discuss.created_at.asc())
+            .all())
+
+    return jsonify({
+        "dream_id": dream.id,
+        "items": [
+            {
+                "id": r.id,
+                "text": r.text or "",
+                "response": r.response or "",
+                "created_at": r.created_at.isoformat() + "Z",
+            } for r in rows
+        ]
+    })
 
 
 @app.route("/api/check_auth", methods=["GET"])
