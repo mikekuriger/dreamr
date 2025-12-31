@@ -2074,7 +2074,7 @@ def convert_dream_to_image_prompt(message, tone=None, quality="high", image_styl
         logger.debug(f"[convert_dream_to_image_prompt] User selected style: {style}")
     else:
         style = random.choice(TONE_TO_STYLE.get(tone, TONE_TO_STYLE["Peaceful / gentle"]))
-        logger.debug(f"[convert_dream_to_image_prompt] AI selected style: {style}")
+        logger.info(f"[convert_dream_to_image_prompt] AI selected style: {style}")
         logger.debug(f"[convert_dream_to_image_prompt] Received tone: {repr(tone)}")
         logger.debug(f"[convert_dream_to_image_prompt] Available tones: {list(TONE_TO_STYLE.keys())}")
 
@@ -2535,7 +2535,8 @@ def chat():
         q = "pro" if is_pro else "simple"
         
         # 2) Build prompt (adds recent life events if any)
-        dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
+        #dream_prompt = CATEGORY_PROMPTS["dream"] if is_pro else CATEGORY_PROMPTS["dream_free"]
+        dream_prompt = CATEGORY_PROMPTS["dream"] 
         prompt = _build_user_payload(dream_prompt, current_user.id, message)
         
         if overlay:
@@ -2990,9 +2991,9 @@ def generate_dream_image():
 
     try:
         logger.info(f"Converting dream to {q} quality image prompt...")
-        logger.info(f"Style:  {image_style_slug}")
+        logger.debug(f"Selected Style:  {image_style_slug}")
         image_prompt = convert_dream_to_image_prompt(message, tone, q, image_style_slug=image_style_slug)
-        logger.info(f"[image prompt]: {image_prompt}")
+        logger.debug(f"[image prompt]: {image_prompt}")
 
         # logger.info("Sending image generation request...")
 
