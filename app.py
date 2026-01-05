@@ -68,7 +68,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
 # app.config.from_pyfile('config.py')
-cfg_path = os.getenv("FLASK_CONFIG_FILE", "config.py")
+cfg_path = os.getenv("FLASK_CONFIG_FILE", "/home/mk7193/dreamr/config.py")
 if os.path.exists(cfg_path):
     app.config.from_pyfile(cfg_path)
 
@@ -225,7 +225,7 @@ CONFIRM_PAGE_TEMPLATE = """
 # google auth
 oauth = OAuth(app)
 
-with open('google_oauth_credentials.json') as f:
+with open('/home/mk7193/dreamr/google_oauth_credentials.json') as f:
     google_creds = json.load(f)
 
 google = oauth.register(
@@ -3740,6 +3740,8 @@ def generate_interpreter_icon(interp_id):
         logger.exception("Unexpected error during icon generation")
         return jsonify({"error": "Icon generation failed"}), 500
 
+
+
 # =========================
 # Admin blueprint (HTML)
 # =========================
@@ -3749,34 +3751,83 @@ def generate_interpreter_icon(interp_id):
 ADMIN_SHELL = """<!doctype html><meta charset="utf-8">
 <title>{{ title or 'Admin' }}</title>
 <style>
-  /* page width */
-  :root { --page-width: 1400px; }               /* make larger if you want */
+  :root { --page-width: 1600px; }
   html,body{height:100%;margin:0;padding:0}
   *{box-sizing:border-box}
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;color:#151515;background:#fff}
-  .wrap{width:min(96vw, var(--page-width)); margin:20px auto; padding:0 8px;}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu;color:#151515;background:#f8f9fa}
+  .wrap{width:min(96vw, var(--page-width)); margin:20px auto; padding:0 16px;}
 
   a{color:#0a58ca;text-decoration:none}
-  .msg{padding:6px 10px;border-radius:8px;background:#eef;display:inline-block}
-  nav a{margin-right:12px}
-  hr{border:0;border-top:1px solid #ddd;margin:12px 0}
+  a:hover{text-decoration:underline}
+  .msg{padding:8px 12px;border-radius:6px;background:#d1ecf1;border:1px solid #bee5eb;display:inline-block;margin:4px 0}
+  .msg.success{background:#d4edda;border-color:#c3e6cb}
+  .msg.error{background:#f8d7da;border-color:#f5c6cb}
+  
+  nav{background:#fff;padding:12px 0;margin:-20px -16px 20px;border-bottom:2px solid #dee2e6}
+  nav .wrap{display:flex;align-items:center;gap:20px}
+  nav a{color:#495057;font-weight:500;padding:8px 12px;border-radius:4px}
+  nav a:hover{background:#e9ecef;text-decoration:none}
+  
+  h1{margin:0;font-size:24px;color:#212529}
+  h2{font-size:20px;margin:24px 0 12px;color:#212529}
+  h3{font-size:16px;margin:20px 0 10px;color:#495057}
+  
+  hr{border:0;border-top:1px solid #dee2e6;margin:20px 0}
 
-  table{border-collapse:collapse;width:100%;margin:10px 0; table-layout:auto}
-  th,td{border:1px solid #ddd;padding:8px;vertical-align:top}
-  th{background:#f4f4f4}
+  table{border-collapse:collapse;width:100%;margin:12px 0;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.1);table-layout:fixed}
+  th,td{border:1px solid #dee2e6;padding:10px;vertical-align:top;font-size:14px}
+  th{background:#f8f9fa;font-weight:600;color:#495057;text-align:left}
+  td{color:#212529}
+  tr:hover{background:#f8f9fa}
+  
+  .dream-img{width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6}
+  .text-cell{max-width:200px;word-wrap:break-word;overflow-wrap:break-word;line-height:1.4}
+  
+  form{background:#fff;padding:16px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin:12px 0}
+  form.inline{display:inline;background:none;padding:0;box-shadow:none;margin:0 4px 0 0}
+  
+  label{display:block;margin:8px 0 4px;font-weight:500;font-size:14px;color:#495057}
+  input[type=text],input[type=number],input[type=password],select{
+    width:100%;padding:8px 12px;border:1px solid #ced4da;border-radius:4px;font-size:14px;
+    font-family:inherit;background:#fff
+  }
+  input[type=text]:focus,input[type=number]:focus,input[type=password]:focus,select:focus{
+    outline:none;border-color:#80bdff;box-shadow:0 0 0 3px rgba(0,123,255,0.1)
+  }
+  
+  button{
+    padding:8px 16px;border:none;border-radius:4px;font-size:14px;font-weight:500;
+    cursor:pointer;background:#007bff;color:#fff;font-family:inherit
+  }
+  button:hover{background:#0056b3}
+  button[type=submit]{background:#28a745}
+  button[type=submit]:hover{background:#218838}
+  form.inline button{padding:6px 12px;font-size:13px;background:#6c757d}
+  form.inline button:hover{background:#5a6268}
+  
+  .grid{display:grid;grid-template-columns:200px 1fr;gap:12px;align-items:center}
+  .section{background:#fff;padding:20px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.1);margin:16px 0}
+  
+  .pagination{margin:16px 0;display:flex;gap:12px;align-items:center}
+  .pagination a{padding:6px 12px;background:#fff;border:1px solid #dee2e6;border-radius:4px}
+  .pagination a:hover{background:#e9ecef;text-decoration:none}
+  .pagination span{color:#6c757d}
 </style>
 
-<div class="wrap">
-  <h1>Dreamr Admin</h1>
+<body>
   <nav>
-    <a href="/admin/">Dashboard</a>
-    <a href="/admin/users">Users</a>
-    <a href="/admin/logout" onclick="event.preventDefault();document.getElementById('al').submit()">Logout</a>
+    <div class="wrap">
+      <h1>Dreamr Admin</h1>
+      <a href="/admin/">Dashboard</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/logout" onclick="event.preventDefault();document.getElementById('al').submit()" style="margin-left:auto">Logout</a>
+    </div>
   </nav>
-  <hr>
-  {{ body|safe }}
+  <div class="wrap">
+    {{ body|safe }}
+  </div>
   <form id="al" method="post" action="/admin/logout"></form>
-</div>
+</body>
 """
 
 
@@ -3839,10 +3890,13 @@ def admin_dashboard():
                        .order_by(desc(PaymentTransaction.created_at)).limit(10).all())
     BODY = """
     <h2>Dashboard</h2>
-    <div class="msg">Total users: <b>{{ total_users }}</b></div>
-    <div class="msg">Total dreams: <b>{{ total_dreams }}</b></div>
-    <div class="msg">Active/trial subs: <b>{{ active_subs }}</b></div>
-    <div class="msg">Pending signups: <b>{{ pending }}</b></div>
+    <div style="display:flex;gap:12px;margin:16px 0">
+      <div class="msg">Total users: <b>{{ total_users }}</b></div>
+      <div class="msg">Total dreams: <b>{{ total_dreams }}</b></div>
+      <div class="msg">Active/trial subs: <b>{{ active_subs }}</b></div>
+      <div class="msg">Pending signups: <b>{{ pending }}</b></div>
+    </div>
+    
     <h3>Recent payments</h3>
     <table>
       <tr><th>ID</th><th>User</th><th>Amount</th><th>Status</th><th>Provider</th><th>When</th></tr>
@@ -3850,10 +3904,10 @@ def admin_dashboard():
       <tr>
         <td>{{ p.id }}</td>
         <td><a href="{{ url_for('admin_user_detail', user_id=p.user_id) }}">#{{ p.user_id }}</a></td>
-        <td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+        <td>${{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
         <td>{{ p.status }}</td>
         <td>{{ p.provider }}</td>
-        <td>{{ p.created_at }}</td>
+        <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -3898,28 +3952,46 @@ def admin_users_list():
         .all()
     }
     credits_map = {c.user_id: c for c in UserCredits.query.filter(UserCredits.user_id.in_([u.id for u in users])).all()}
+    
+    last_dream_subq = (db.session.query(Dream.user_id, func.max(Dream.created_at).label("last_dream"))
+                       .group_by(Dream.user_id).subquery())
+    last_dreams = {
+        d.user_id: d.last_dream for d in db.session.query(last_dream_subq).all()
+    }
 
     BODY = """
     <h2>Users</h2>
-    <form method="get">
-      <input name="q" value="{{ q or '' }}" placeholder="search email or name">
-      <select name="sort">
+    <form method="get" style="margin:16px 0">
+      <input name="q" value="{{ q or '' }}" placeholder="search email or name" style="width:300px;display:inline-block">
+      <select name="sort" style="width:150px;display:inline-block">
         <option value="-signup" {% if sort=='-signup' %}selected{% endif %}>Newest</option>
         <option value="email" {% if sort=='email' %}selected{% endif %}>Email</option>
         <option value="name" {% if sort=='name' %}selected{% endif %}>Name</option>
       </select>
       <button type="submit">Search</button>
     </form>
-    <table>
-      <tr><th>ID</th><th>Email</th><th>Name</th><th>Signup</th><th>Plan</th><th>Status</th><th>Text/wk</th><th>Images</th></tr>
+    <table style="table-layout:auto">
+      <tr>
+        <th style="width:60px">ID</th>
+        <th style="width:200px">Email</th>
+        <th style="width:150px">Name</th>
+        <th style="width:110px">Signup</th>
+        <th style="width:110px">Last Dream</th>
+        <th style="width:120px">Plan</th>
+        <th style="width:80px">Status</th>
+        <th style="width:80px">Text/wk</th>
+        <th style="width:80px">Images</th>
+      </tr>
       {% for u in users %}
         {% set s = latest_subs.get(u.id) %}
         {% set c = credits_map.get(u.id) %}
+        {% set ld = last_dreams.get(u.id) %}
         <tr>
           <td><a href="{{ url_for('admin_user_detail', user_id=u.id) }}">{{ u.id }}</a></td>
-          <td>{{ u.email }}</td>
+          <td style="word-wrap:break-word">{{ u.email }}</td>
           <td>{{ u.first_name or '' }}</td>
-          <td>{{ u.signup_date or '' }}</td>
+          <td>{{ u.signup_date.strftime('%Y-%m-%d') if u.signup_date else '' }}</td>
+          <td>{{ ld.strftime('%Y-%m-%d') if ld else '—' }}</td>
           <td>{{ s.plan_id if s else '' }}</td>
           <td>{{ s.status if s else '' }}</td>
           <td>{{ c.text_remaining_week if c else 0 }}</td>
@@ -3927,14 +3999,15 @@ def admin_users_list():
         </tr>
       {% endfor %}
     </table>
-    <div>
-      {% if page>1 %}<a href="?page={{ page-1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">Prev</a>{% endif %}
+    <div class="pagination">
+      {% if page>1 %}<a href="?page={{ page-1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">← Prev</a>{% endif %}
       <span>Page {{ page }}</span>
-      {% if has_more %}<a href="?page={{ page+1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">Next</a>{% endif %}
+      {% if has_more %}<a href="?page={{ page+1 }}&per_page={{ per_page }}&q={{ q }}&sort={{ sort }}">Next →</a>{% endif %}
     </div>
     """
     return _render_admin(BODY, "Users",
                          users=users, latest_subs=latest_subs, credits_map=credits_map,
+                         last_dreams=last_dreams,
                          page=page, per_page=per_page, q=q, sort=sort, has_more=has_more)
 
 @app.get("/admin/users/<int:user_id>")
@@ -3956,7 +4029,7 @@ def admin_user_detail(user_id: int):
         .filter(UserSubscription.user_id == u.id,
                 UserSubscription.status.in_(["active", "trial"]))
         .order_by(
-            UserSubscription.end_date.is_(None),     # non-nulls first
+            UserSubscription.end_date.is_(None),
             UserSubscription.end_date.desc(),
             UserSubscription.start_date.desc(),
         )
@@ -3974,113 +4047,141 @@ def admin_user_detail(user_id: int):
     
     BODY = """
     <h2>User #{{ u.id }} — {{ u.email }}</h2>
-    <p>Name: {{ u.first_name or '' }} | TZ: {{ u.timezone or '' }} | Lang: {{ u.language or '' }} | Audio: {{ 'on' if u.enable_audio else 'off' }}</p>
+    <p style="color:#6c757d">Name: {{ u.first_name or '' }} | TZ: {{ u.timezone or '' }} | Lang: {{ u.language or '' }} | Audio: {{ 'on' if u.enable_audio else 'off' }}</p>
 
     {% if request.args.get('msg') %}
-      <div class="msg">{{ request.args.get('msg') }}</div>
+      <div class="msg success">{{ request.args.get('msg') }}</div>
     {% endif %}
 
-    <h3>Credits</h3>
-    <form method="post" action="/admin/users/{{ u.id }}/credits">
-      <label>Text remaining this week:
+    <div class="section">
+      <h3>Credits</h3>
+      <form method="post" action="/admin/users/{{ u.id }}/credits" class="grid">
+        <label>Text remaining this week:</label>
         <input type="number" name="text_remaining_week" value="{{ credits.text_remaining_week if credits else 0 }}" min="0">
-      </label>
-      <label>Images remaining lifetime:
+        
+        <label>Images remaining lifetime:</label>
         <input type="number" name="image_remaining_lifetime" value="{{ credits.image_remaining_lifetime if credits else 0 }}" min="0">
-      </label>
-      <button type="submit">Update credits</button>
-    </form>
+        
+        <div></div>
+        <button type="submit">Update credits</button>
+      </form>
+    </div>
 
-    <h3>Subscription</h3>
+    <div class="section">
+      <h3>Subscription</h3>
+      {% if not plans %}
+        <div class="msg error">No plans found. <a href="/admin/plans">Seed default plans</a>.</div>
+      {% endif %}
+      
+      {% if current_sub %}
+        <div class="msg" style="margin:12px 0">
+          <strong>Current:</strong> {{ current_sub.plan_id }}
+          · status: {{ current_sub.status }}
+          · start: {{ current_sub.start_date.strftime('%Y-%m-%d') if current_sub.start_date else '' }}
+          · end: {{ current_sub.end_date.strftime('%Y-%m-%d') if current_sub.end_date else '—' }}
+          · auto renew: {{ 'yes' if current_sub.auto_renew else 'no' }}
+        </div>
+      {% else %}
+        <div class="msg">No active subscription</div>
+      {% endif %}
+      
+      <form method="post" action="/admin/users/{{ u.id }}/subscription" class="grid">
+        <label>Action:</label>
+        <select name="action">
+          <option value="create">Create new</option>
+          <option value="update_latest">Update latest</option>
+        </select>
+      
+        <label>Plan:</label>
+        <select name="plan_id">
+          {% for p in plans %}
+            <option value="{{ p.id }}" {% if current_sub and p.id == current_sub.plan_id %}selected{% endif %}>
+              {{ p.id }} ({{ p.period }}, ${{ '%.2f'|format(p.price) }})
+            </option>
+          {% endfor %}
+        </select>
+      
+        <label>Status:</label>
+        <select name="status">
+          {% for s in ['active','trial','canceled','expired'] %}
+            <option value="{{ s }}" {% if current_sub and s == current_sub.status %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      
+        <label>Auto renew:</label>
+        <select name="auto_renew">
+          <option value="0" {% if current_sub and not current_sub.auto_renew %}selected{% endif %}>no</option>
+          <option value="1" {% if current_sub and current_sub.auto_renew %}selected{% endif %}>yes</option>
+        </select>
+      
+        <label>Start date:</label>
+        <input name="start_date" type="text" placeholder="YYYY-MM-DD or leave blank for now"
+               value="{{ current_sub.start_date.strftime('%Y-%m-%d') if current_sub and current_sub.start_date else '' }}">
+      
+        <label>End date:</label>
+        <input name="end_date" type="text" placeholder="YYYY-MM-DD or leave blank for auto"
+               value="{{ current_sub.end_date.strftime('%Y-%m-%d') if current_sub and current_sub.end_date else '' }}">
+      
+        <label>Payment provider:</label>
+        <select name="payment_provider">
+          <option value="">—</option>
+          <option value="apple" {% if current_sub and current_sub.payment_provider=='apple' %}selected{% endif %}>apple</option>
+          <option value="google" {% if current_sub and current_sub.payment_provider=='google' %}selected{% endif %}>google</option>
+          <option value="stripe" {% if current_sub and current_sub.payment_provider=='stripe' %}selected{% endif %}>stripe</option>
+        </select>
+      
+        <label>Payment method:</label>
+        <input name="payment_method" type="text" placeholder="card / apple / google"
+               value="{{ current_sub.payment_method if current_sub else '' }}">
+      
+        <div></div>
+        <button type="submit">Save subscription</button>
+      </form>
+    </div>
 
-    {% if not plans %}
-      <div class="msg">No plans found. <a href="/admin/plans">Seed default plans</a>.</div>
-    {% endif %}
-    
-    {% if current_sub %}
-      <div class="msg">
-        Current: <b>{{ current_sub.plan_id }}</b>
-        · status {{ current_sub.status }}
-        · start {{ current_sub.start_date }}
-        · end {{ current_sub.end_date or '—' }}
-        · auto renew {{ 'yes' if current_sub.auto_renew else 'no' }}
-      </div>
-    {% else %}
-      <div class="msg">No subscription on record</div>
-    {% endif %}
-    <h3></h3>
-    <form method="post" action="/admin/users/{{ u.id }}/subscription" class="grid2">
-      <label>Action</label>
-      <select name="action">
-        <option value="create">Create new</option>
-        <option value="update_latest">Update latest</option>
-      </select>
-    
-      <label>Plan</label>
-      <select name="plan_id">
-        {% for p in plans %}
-          <option value="{{ p.id }}"
-            {% if current_sub and p.id == current_sub.plan_id %}selected{% endif %}>
-            {{ p.id }} ({{ p.period }}, ${{ '%.2f'|format(p.price) }})
-          </option>
-        {% endfor %}
-      </select>
-    
-      <label>Status</label>
-      <select name="status">
-        {% for s in ['active','trial','canceled','expired'] %}
-          <option value="{{ s }}"
-            {% if current_sub and s == current_sub.status %}selected{% endif %}>{{ s }}</option>
-        {% endfor %}
-      </select>
-    
-      <label>Auto renew</label>
-      <select name="auto_renew">
-        <option value="0" {% if current_sub and not current_sub.auto_renew %}selected{% endif %}>no</option>
-        <option value="1" {% if current_sub and current_sub.auto_renew %}selected{% endif %}>yes</option>
-      </select>
-    
-      <label>Start (blank = now)</label>
-      <input name="start_date" placeholder="YYYY-MM-DD or ISO"
-             value="{{ current_sub.start_date if current_sub else '' }}">
-    
-      <label>End (blank = auto by plan)</label>
-      <input name="end_date" placeholder="YYYY-MM-DD or ISO"
-             value="{{ current_sub.end_date if current_sub else '' }}">
-    
-      <label>Payment provider</label>
-      <select name="payment_provider">
-        <option></option><option>apple</option><option>google</option><option>stripe</option>
-      </select>
-    
-      <label>Payment method</label>
-      <input name="payment_method" placeholder="card / apple / google">
-    
-      <div></div><button class="btn" type="submit">Save subscription</button>
-    </form>
-
-    <h3>Set password</h3>
-    <form method="post" action="/admin/users/{{ u.id }}/password">
-      <input name="password" type="password" minlength="8" required placeholder="New password">
-      <button type="submit">Set password</button>
-    </form>
+    <div class="section">
+      <h3>Set password</h3>
+      <form method="post" action="/admin/users/{{ u.id }}/password" class="grid">
+        <label>New password:</label>
+        <input name="password" type="password" minlength="8" required placeholder="Min 8 characters">
+        <div></div>
+        <button type="submit">Set password</button>
+      </form>
+    </div>
 
     <h3>Dreams (latest 50)</h3>
-    <table>
-      <tr><th>ID</th><th>Created</th><th>Hidden</th><th>Summary</th><th>Text</th><th>Analysis</th><th>Actions</th></tr>
+    <table style="table-layout:auto">
+      <tr>
+        <th style="width:80px">Image</th>
+        <th style="width:60px">ID</th>
+        <th style="width:140px">Created</th>
+        <th style="width:70px">Hidden</th>
+        <th style="width:200px">Summary</th>
+        <th style="width:250px">Text</th>
+        <th style="width:250px">Analysis</th>
+        <th style="width:140px">Actions</th>
+      </tr>
       {% for d in dreams %}
         <tr>
-          <td>{{ d.id }}</td>
-          <td>{{ d.created_at }}</td>
-          <td>{{ d.hidden and 'yes' or 'no' }}</td>
-          <td>{{ d.summary or (d.text[:80] ~ ('…' if d.text and d.text|length>80 else '')) }}</td>
-          <td>{{ d.text or (d.text[:80] ~ ('…' if d.text and d.text|length>80 else '')) }}</td>
-          <td>{{ d.analysis }}</td>
           <td>
+            {% if d.image_file and not d.image_file.startswith('placeholder') %}
+              <img src="/static/images/dreams/{{ d.image_file }}" class="dream-img" alt="Dream {{ d.id }}">
+            {% else %}
+              <div style="width:60px;height:60px;background:#e9ecef;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px">💭</div>
+            {% endif %}
+          </td>
+          <td>{{ d.id }}</td>
+          <td style="white-space:nowrap">{{ d.created_at.strftime('%Y-%m-%d %H:%M') if d.created_at else '' }}</td>
+          <td>{{ 'yes' if d.hidden else 'no' }}</td>
+          <td class="text-cell">{{ d.summary or '' }}</td>
+          <td class="text-cell">{{ d.text or '' }}</td>
+          <td class="text-cell">{{ d.analysis or '' }}</td>
+          <td style="white-space:nowrap">
             <form class="inline" method="post" action="/admin/users/{{ u.id }}/dreams/{{ d.id }}/toggle-hidden">
-              <button type="submit">{{ d.hidden and 'Unhide' or 'Hide' }}</button>
+              <button type="submit">{{ 'Unhide' if d.hidden else 'Hide' }}</button>
             </form>
-            <form class="inline" method="post" action="/admin/users/{{ u.id }}/dreams/{{ d.id }}/delete" onsubmit="return confirm('Delete dream {{ d.id }}? This moves images to /static/images/deleted');">
+            <form class="inline" method="post" action="/admin/users/{{ u.id }}/dreams/{{ d.id }}/delete" 
+                  onsubmit="return confirm('Delete dream {{ d.id }}?');">
               <button type="submit">Delete</button>
             </form>
           </td>
@@ -4088,21 +4189,40 @@ def admin_user_detail(user_id: int):
       {% endfor %}
     </table>
 
-    <h3>Subscriptions (history)</h3>
-    <table>
-      <tr><th>ID</th><th>Plan</th><th>Status</th><th>Start</th><th>End</th><th>Auto</th><th>Provider</th></tr>
-      {% for s in subs %}
-        <tr><td>{{ s.id }}</td><td>{{ s.plan_id }}</td><td>{{ s.status }}</td><td>{{ s.start_date }}</td><td>{{ s.end_date or '' }}</td><td>{{ 'yes' if s.auto_renew else 'no' }}</td><td>{{ s.payment_provider or '' }}</td></tr>
-      {% endfor %}
-    </table>
+    <details style="margin:24px 0">
+      <summary style="cursor:pointer;font-weight:600;padding:8px 0">Subscription history ({{ subs|length }})</summary>
+      <table style="margin-top:12px">
+        <tr><th>ID</th><th>Plan</th><th>Status</th><th>Start</th><th>End</th><th>Auto</th><th>Provider</th></tr>
+        {% for s in subs %}
+          <tr>
+            <td>{{ s.id }}</td>
+            <td>{{ s.plan_id }}</td>
+            <td>{{ s.status }}</td>
+            <td>{{ s.start_date.strftime('%Y-%m-%d') if s.start_date else '' }}</td>
+            <td>{{ s.end_date.strftime('%Y-%m-%d') if s.end_date else '' }}</td>
+            <td>{{ 'yes' if s.auto_renew else 'no' }}</td>
+            <td>{{ s.payment_provider or '' }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </details>
 
-    <h3>Payments</h3>
-    <table>
-      <tr><th>ID</th><th>Amount</th><th>Status</th><th>Provider</th><th>Txn</th><th>When</th></tr>
-      {% for p in payments %}
-        <tr><td>{{ p.id }}</td><td>{{ '%.2f'|format(p.amount) }} {{ p.currency }}</td><td>{{ p.status }}</td><td>{{ p.provider }}</td><td>{{ p.provider_transaction_id or '' }}</td><td>{{ p.created_at }}</td></tr>
-      {% endfor %}
-    </table>
+    <details style="margin:24px 0">
+      <summary style="cursor:pointer;font-weight:600;padding:8px 0">Payment history ({{ payments|length }})</summary>
+      <table style="margin-top:12px">
+        <tr><th>ID</th><th>Amount</th><th>Status</th><th>Provider</th><th>Transaction ID</th><th>When</th></tr>
+        {% for p in payments %}
+          <tr>
+            <td>{{ p.id }}</td>
+            <td>${{ '%.2f'|format(p.amount) }} {{ p.currency }}</td>
+            <td>{{ p.status }}</td>
+            <td>{{ p.provider }}</td>
+            <td style="font-family:monospace;font-size:12px">{{ p.provider_transaction_id or '' }}</td>
+            <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </details>
     """
     return _render_admin(BODY, f"User {u.id}",
                          u=u, subs=subs, credits=credits, dreams=dreams, payments=payments, plans=plans, current_sub=current_sub)
@@ -4149,9 +4269,8 @@ def admin_update_credits(user_id: int):
             return _admin_redirect(user_id, "Credits must be >= 0")
         uc = UserCredits.query.get(user_id)
         if not uc:
-            # week_anchor_utc required; set to start of current week in UTC
             now = datetime.utcnow()
-            week_anchor = now - timedelta(days=now.weekday())  # Monday
+            week_anchor = now - timedelta(days=now.weekday())
             uc = UserCredits(user_id=user_id, week_anchor_utc=week_anchor, text_remaining_week=tw, image_remaining_lifetime=iw)
             db.session.add(uc)
         else:
@@ -4185,7 +4304,6 @@ def admin_update_subscription(user_id: int):
         sd = _parse_iso_optional(start_date) or datetime.utcnow()
         ed = _parse_iso_optional(end_date)
         if not ed:
-            # compute by plan.period
             if (plan.period or "").lower().startswith("month"):
                 ed = sd + relativedelta(months=1)
             elif (plan.period or "").lower().startswith("year"):
@@ -4260,7 +4378,6 @@ def _archive_dream_images(dream):
             if os.path.exists(path):
                 shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
     except Exception:
-        # Don’t let FS errors kill account deletion
         pass
 
 @app.post("/admin/users/<int:user_id>/dreams/<int:dream_id>/delete")
@@ -4293,7 +4410,6 @@ def admin_set_password(user_id: int):
     except Exception:
         db.session.rollback()
         return _admin_redirect(user_id, "Failed to update password")
-
 
 
 if __name__ == "__main__":
