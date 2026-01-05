@@ -1,0 +1,4 @@
+./rename_img_samples.py --samples image_samples --root /data/dreamr-frontend/static/images/styles  --subject tub_hires
+
+cd /data/dreamr-frontend/static/images
+sudo restorecon -Rv styles

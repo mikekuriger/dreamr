@@ -1,0 +1,18 @@
+# By emails (explicit)
+python3 grant_pro_yearly.py \
+  --user dreamr --password '***' --database dreamr \
+  --emails alice@example.com bob@example.com --verbose
+
+# From a file (one email per line)
+python3 grant_pro_yearly.py \
+  --user dreamr --password '***' --database dreamr \
+  --email-file test_users.txt --verbose
+
+# By numeric user IDs
+python3 grant_pro_yearly.py \
+  --user dreamr --password '***' --database dreamr \
+  --user-ids 101 102 103 --verbose
+
+# Dry-run first
+python3 grant_pro_yearly.py ... --emails test@ex.com --dry-run -v
+
