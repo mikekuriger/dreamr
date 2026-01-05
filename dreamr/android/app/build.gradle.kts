@@ -55,8 +55,8 @@ android {
         //targetSdk = flutter.targetSdkVersion
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 15                        // also change in pubspec.yaml
-        versionName = "1.0.9"                   // also change in pubspec.yaml
+        versionCode = 17                        // also change in pubspec.yaml
+        versionName = "1.0.11"                   // also change in pubspec.yaml
     }
 
     signingConfigs {
@@ -73,6 +73,10 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
