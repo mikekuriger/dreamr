@@ -1,6 +1,35 @@
 // models/subscription.dart
 
 /// Represents a subscription plan in the app
+class SubscriptionFeatureCard {
+  final String key;
+  final String title;
+  final String description;
+
+  const SubscriptionFeatureCard({
+    required this.key,
+    required this.title,
+    required this.description,
+  });
+
+  factory SubscriptionFeatureCard.fromJson(Map<String, dynamic> json) {
+    return SubscriptionFeatureCard(
+      key: (json['key'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'key': key,
+      'title': title,
+      'description': description,
+    };
+  }
+}
+
+/// Represents a subscription plan in the app
 class SubscriptionPlan {
   final String id;
   final String name;
@@ -8,6 +37,7 @@ class SubscriptionPlan {
   final double price;
   final String period; // 'monthly', 'yearly', etc.
   final List<String> features;
+  final List<SubscriptionFeatureCard> featureCards;
   final String? productId; // Store/platform specific product ID
 
   const SubscriptionPlan({
@@ -17,17 +47,30 @@ class SubscriptionPlan {
     required this.price,
     required this.period,
     required this.features,
+    required this.featureCards,
     this.productId,
   });
 
   factory SubscriptionPlan.fromJson(Map<String, dynamic> json) {
+    final rawFeatures = json['features'];
+    final rawFeatureCards = json['feature_cards'];
+
     return SubscriptionPlan(
       id: json['id'] as String,
       name: json['name'] as String,
       description: json['description'] as String,
       price: (json['price'] as num).toDouble(),
       period: json['period'] as String,
-      features: (json['features'] as List<dynamic>).map((e) => e as String).toList(),
+      features: rawFeatures is List
+          ? rawFeatures.map((e) => e.toString()).toList()
+          : const <String>[],
+      featureCards: rawFeatureCards is List
+          ? rawFeatureCards
+              .whereType<Map>()
+              .map((e) => SubscriptionFeatureCard.fromJson(
+                  Map<String, dynamic>.from(e)))
+              .toList()
+          : const <SubscriptionFeatureCard>[],
       productId: json['product_id'] as String?,
     );
   }
@@ -40,6 +83,7 @@ class SubscriptionPlan {
       'price': price,
       'period': period,
       'features': features,
+      'feature_cards': featureCards.map((e) => e.toJson()).toList(),
       'product_id': productId,
     };
   }
