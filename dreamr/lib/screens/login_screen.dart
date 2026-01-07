@@ -398,39 +398,56 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: SizedBox(
                           height: 48,
                           width: 225, 
-                          child: SignInWithAppleButton(
-                            onPressed: _loading
-                                ? null
-                                : () async {
-                                    try {
-                                      final credential =
-                                          await SignInWithApple.getAppleIDCredential(
-                                        scopes: [
-                                          AppleIDAuthorizationScopes.email,
-                                          AppleIDAuthorizationScopes.fullName,
-                                        ],
-                                      );
+                          child: Builder(
+                            builder: (context) {
+                              // We scale text up globally on iPad. The Apple button's internal
+                              // typography doesn't look great when scaled, so we undo ONLY the
+                              // extra iPad multiplier here.
+                              final mq = MediaQuery.of(context);
+                              final isIpadLike = mq.size.shortestSide >= 600;
 
-                                      if (!mounted) return;  // <<< mounted check
+                              final effectiveMq = isIpadLike
+                                  ? mq.copyWith(textScaleFactor: mq.textScaleFactor / 1.25)
+                                  : mq;
 
-                                      await _handleAppleSignIn(credential);
+                              return MediaQuery(
+                                data: effectiveMq,
+                                child: SignInWithAppleButton(
+                                  onPressed: _loading
+                                      ? null
+                                      : () async {
+                                          try {
+                                            final credential =
+                                                await SignInWithApple.getAppleIDCredential(
+                                              scopes: [
+                                                AppleIDAuthorizationScopes.email,
+                                                AppleIDAuthorizationScopes.fullName,
+                                              ],
+                                            );
 
-                                    } catch (e, st) {
-                                      debugPrint('Apple sign-in failed: $e\n$st');
+                                            if (!mounted) return; // <<< mounted check
 
-                                      if (!mounted) return; // <<< mounted check
+                                            await _handleAppleSignIn(credential);
+                                          } catch (e, st) {
+                                            debugPrint('Apple sign-in failed: $e\n$st');
 
-                                      final msg = e.toString().replaceFirst('Exception: ', '');
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(msg),
-                                          behavior: SnackBarBehavior.floating,
-                                        ),
-                                      );
-                                    }
-                                  },
-                            style: SignInWithAppleButtonStyle.white, 
-                            // style: SignInWithAppleButtonStyle.black,
+                                            if (!mounted) return; // <<< mounted check
+
+                                            final msg =
+                                                e.toString().replaceFirst('Exception: ', '');
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(msg),
+                                                behavior: SnackBarBehavior.floating,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                  style: SignInWithAppleButtonStyle.white,
+                                  // style: SignInWithAppleButtonStyle.black,
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),

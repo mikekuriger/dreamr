@@ -95,7 +95,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.purple950,
+      backgroundColor: const Color.fromARGB(255, 17, 19, 42),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -325,12 +325,20 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
         return Icons.bar_chart;
       case 'priority_support':
         return Icons.support_agent;
-      case 'unlimited_images':
+      case 'followup_questions':
+        return Icons.contact_support;
+      case 'life_events':
+        return Icons.favorite;
+      case 'sharing':
+        return Icons.share;
+      case 'image_styles':
         return Icons.auto_awesome;
-      case 'premium_themes':
+      case 'dream_visuals':
         return Icons.palette;
-      case 'cloud_sync':
-        return Icons.cloud_done;
+      case 'interpreter_personas':
+        return Icons.face;
+      case 'color_coded_journal':
+        return Icons.edit_note_sharp;
       default:
         return Icons.star;
     }
@@ -342,7 +350,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
       children: [
         Row(
           children: const [
-            Icon(Icons.workspace_premium, color: Colors.amber, size: 22),
+            Icon(Icons.workspace_premium, color: Colors.amber, size: 32),
             SizedBox(width: 8),
             Text(
               'Dreamr Pro Features',
@@ -373,17 +381,18 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: AppColors.purple850,
+                    color: const Color.fromARGB(255, 17, 0, 87),
+                    // color: AppColors.purple850,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: const Color.fromARGB(140, 130, 217, 255),
-                      width: 1,
+                      color: const Color.fromARGB(90, 130, 217, 255),
+                      width: .5,
                     ),
                   ),
                   child: Icon(
                     _iconForFeatureKey(c.key),
                     color: const Color.fromARGB(255, 130, 217, 255),
-                    size: 18,
+                    size: 22,
                   ),
                 ),
                 const SizedBox(width: 10),

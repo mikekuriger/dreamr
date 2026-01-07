@@ -1,4 +1,5 @@
 // main.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -54,12 +55,46 @@ class DreamrApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData(
+      scaffoldBackgroundColor: AppColors.background,
+    );
+
     return MaterialApp(
       title: 'Dreamr',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: AppColors.background,
-      ),
+      theme: baseTheme,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+
+        final mq = MediaQuery.of(context);
+        final isIpadLike =
+            !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS &&
+            mq.size.shortestSide >= 600;
+
+        if (!isIpadLike) {
+          return child;
+        }
+
+        // iPad-only: make the app feel less cramped by scaling up text and
+        // theme-driven icon sizes. This avoids touching every widget.
+        const scale = 1.25;
+
+        final iconBase = (baseTheme.iconTheme.size ?? 24.0) * scale;
+
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaleFactor: mq.textScaleFactor * scale,
+          ),
+          child: Theme(
+            data: baseTheme.copyWith(
+              iconTheme: baseTheme.iconTheme.copyWith(size: iconBase),
+              primaryIconTheme:
+                  baseTheme.primaryIconTheme.copyWith(size: iconBase),
+            ),
+            child: child,
+          ),
+        );
+      },
       home: const SplashScreen(),
       routes: {
         '/login': (context) => const LoginScreen(),

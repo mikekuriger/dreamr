@@ -806,6 +806,9 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
             final dream = dreamsToDisplay[index];
             final isExpanded = _expanded[dream.id] ?? false;
             final toneStyle = _getToneStyle(dream.tone);
+            final isIpadLike = Platform.isIOS &&
+                MediaQuery.of(context).size.shortestSide >= 600;
+            final double tileSize = isIpadLike ? 70 : 52;
             final formattedDate = DateFormat('EEE, MMM d, y h:mm a')
                 .format(dream.createdAt.toLocal());
             final discussItems = _discussCache[dream.id] ?? const [];
@@ -866,8 +869,8 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                     dreamId: dream.id,
                                     url: dream.imageTile,
                                     kind: DreamImageKind.tile,
-                                    width: 52,                                  // ICON size
-                                    height: 52,
+                                    width: tileSize,                                  // ICON size
+                                    height: tileSize,
                                     fit: BoxFit.cover,
                                     radius: BorderRadius.zero,
                                   ),

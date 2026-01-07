@@ -601,8 +601,8 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                           RichText(
-                                text: TextSpan(
+                          Text.rich(
+                                TextSpan(
                                   children: [
                                     if (_isPro == null) ...[
                                       const TextSpan(text: " ", style: TextStyle(color: Colors.white)),
@@ -657,8 +657,8 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                             children: [
                   // Show this for free accounts only (hide for pro)      
                               if (_isPro == false) ...[   
-                                RichText(
-                                  text: TextSpan(
+                                Text.rich(
+                                  TextSpan(
                                     children: [
                                       const TextSpan(
                                         text: "Dreams Logged: ",
@@ -680,8 +680,8 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                                   ),
                                 ),
                               ],
-                              RichText(
-                                text: TextSpan(
+                              Text.rich(
+                                TextSpan(
                                   children: [
                                     const TextSpan(
                                       text: "Most Common Dream: ",
@@ -805,7 +805,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                           "✨ Dream Calendar", 
                           style: TextStyle(
                             fontSize: 14, 
-                            // fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.normal,
                             color: Colors.white,
                           ),
                         ),

@@ -1,5 +1,6 @@
 // widgets/main_scaffold.dart
 // import 'package:dreamr/services/api_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/theme/colors.dart';
@@ -40,11 +41,223 @@ class _MainScaffoldState extends State<MainScaffold> {
   late int _selectedIndex;
   late final List<Widget> _views;
   bool _navEnabled = true;
-  
-  // Subscription state
-  bool _isPro = false;
-  int? _textRemainingWeek;
-  bool _subscriptionLoaded = false;
+
+  final GlobalKey _menuButtonKey = GlobalKey();
+
+  bool _isIpadLike(BuildContext context) {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return false;
+    return MediaQuery.of(context).size.shortestSide >= 600;
+  }
+
+  Future<void> _handleMenuSelection(String route) async {
+    switch (route) {
+      case '/editor':
+        setState(() {
+          editorRefreshTrigger.value++;
+          _selectedIndex = 3;
+        });
+        break;
+      case '/profile':
+        setState(() {
+          _selectedIndex = 4;
+        });
+        break;
+      case '/settings':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SettingsScreen(
+              refreshTrigger: settingsRefreshTrigger,
+            ),
+          ),
+        );
+        break;
+      case '/subscription':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SubscriptionScreen(),
+          ),
+        );
+        break;
+      case '/help':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HelpScreen(),
+          ),
+        );
+        break;
+      case '/life-events':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LifeEventsScreen(),
+          ),
+        );
+        break;
+      case '/interpreters':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const InterpretersScreen(),
+          ),
+        );
+        break;
+      case '/image-styles':
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ImageStyleSelectionScreen(),
+          ),
+        );
+        break;
+      case '/login':
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        break;
+      case 'logout':
+        await performLogout(context);
+        break;
+    }
+  }
+
+  Future<void> _openHamburgerMenu() async {
+    // Close keyboard first.
+    FocusScope.of(context).unfocus();
+
+    // iPad (iOS) sometimes immediately dismisses popup menus if we open the menu
+    // in the same gesture cycle as the tap. A small delay avoids that.
+    if (_isIpadLike(context)) {
+      // Empirically: iPad needs a large delay to avoid the tap that opens the menu
+      // also being treated as an "outside" tap that dismisses it immediately.
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+
+    final buttonContext = _menuButtonKey.currentContext;
+    if (buttonContext == null) return;
+
+    final buttonBox = buttonContext.findRenderObject() as RenderBox?;
+    if (buttonBox == null || !buttonBox.hasSize) return;
+
+    final overlayBox = Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    final buttonRect = Rect.fromPoints(
+      buttonBox.localToGlobal(Offset.zero, ancestor: overlayBox),
+      buttonBox.localToGlobal(buttonBox.size.bottomRight(Offset.zero), ancestor: overlayBox),
+    );
+
+    final rawPosition = RelativeRect.fromRect(buttonRect, Offset.zero & overlayBox.size);
+    final position = RelativeRect.fromLTRB(
+      rawPosition.left,
+      rawPosition.top + 30,
+      rawPosition.right,
+      rawPosition.bottom - 30,
+    );
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: position,
+      color: Colors.grey[850],
+      items: const [
+        PopupMenuItem(
+          value: '/editor',
+          child: Row(
+            children: [
+              Icon(Icons.visibility_off_outlined, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Hide/Delete', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/profile',
+          child: Row(
+            children: [
+              Icon(Icons.person_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Profile', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/settings',
+          child: Row(
+            children: [
+              Icon(Icons.settings_outlined, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Settings', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/life-events',
+          child: Row(
+            children: [
+              Icon(Icons.favorite_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Life Events', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/interpreters',
+          child: Row(
+            children: [
+              Icon(Icons.psychology, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Dream Interpreters', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/image-styles',
+          child: Row(
+            children: [
+              Icon(Icons.palette_outlined, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Image Styles', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/subscription',
+          child: Row(
+            children: [
+              Icon(Icons.star_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Subscription', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: '/help',
+          child: Row(
+            children: [
+              Icon(Icons.help_outline, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Help', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'logout',
+          child: Row(
+            children: [
+              Icon(Icons.logout, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Logout', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (selected != null && mounted) {
+      await _handleMenuSelection(selected);
+    }
+  }
+
 
   Widget _getTitleForIndex(int index) {
     String title;
@@ -95,43 +308,11 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 
-  // Load subscription data from provider
-  void _loadSubscriptionData() {
-    final subscriptionModel = Provider.of<SubscriptionModel>(context, listen: false);
-    if (subscriptionModel.loaded) {
-      setState(() {
-        _isPro = subscriptionModel.status.isActive;
-        _textRemainingWeek = subscriptionModel.status.textRemainingWeek;
-        _subscriptionLoaded = true;
-      });
-      
-      // Debug print to verify data is loading correctly
-      debugPrint('MainScaffold: Loaded subscription data - isPro: $_isPro, textRemainingWeek: $_textRemainingWeek');
-    } else {
-      // If not loaded yet, try again after a delay
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          _loadSubscriptionData();
-        }
-      });
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Ensure subscription data is loaded and up-to-date
-    _loadSubscriptionData();
-  }
-
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
-    
-    // Initial load will be handled by didChangeDependencies
-    // which is called right after initState
-    
+
     _views = [
       // DashboardScreen(refreshTrigger: dreamEntryRefreshTrigger), // index 0
       DashboardScreen(
@@ -162,14 +343,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     // force close keyboard
     FocusScope.of(context).unfocus();
 
-    // Get latest subscription data directly from the provider
     final subscriptionModel = Provider.of<SubscriptionModel>(context, listen: false);
-    final bool isPro = subscriptionModel.loaded ? subscriptionModel.status.isActive : _isPro;
-    final int? textRemainingWeek = subscriptionModel.loaded ? subscriptionModel.status.textRemainingWeek : _textRemainingWeek;
-    
-    // Check if user is out of credits and trying to create new dream
-    final bool isOutOfCredits = !isPro && (textRemainingWeek ?? 0) <= 0;
-    
+
     // if (index == 0 && isOutOfCredits) {
     //   // Redirect to subscription screen instead
     //   Navigator.push(
@@ -215,25 +390,6 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen for subscription changes
-    final subscriptionModel = Provider.of<SubscriptionModel>(context);
-    if (_subscriptionLoaded && subscriptionModel.loaded) {
-      final newIsPro = subscriptionModel.status.isActive;
-      final newTextRemainingWeek = subscriptionModel.status.textRemainingWeek;
-      
-      if (newIsPro != _isPro || newTextRemainingWeek != _textRemainingWeek) {
-        // Update state if changed
-        Future.microtask(() {
-          if (mounted) {
-            setState(() {
-              _isPro = newIsPro;
-              _textRemainingWeek = newTextRemainingWeek;
-            });
-          }
-        });
-      }
-    }
-    
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.purple950,
@@ -241,176 +397,10 @@ class _MainScaffoldState extends State<MainScaffold> {
         automaticallyImplyLeading: false,
         title: _getTitleForIndex(_selectedIndex),
         actions: [
-          PopupMenuButton<String>(
+          IconButton(
+            key: _menuButtonKey,
             icon: const Icon(Icons.menu, color: Colors.white),
-            color: Colors.grey[850],
-            // color: AppColors.purple900,
-            onSelected: (String route) async {
-              // ✅ force keyboard to close when selecting from menu
-              FocusScope.of(context).unfocus();
-              
-              switch (route) {
-                case '/editor':
-                  setState(() {
-                    editorRefreshTrigger.value++;
-                    _selectedIndex = 3; 
-                  });
-                  break;
-                case '/profile':
-                  setState(() {
-                    _selectedIndex = 4; 
-                  });
-                  break;
-                case '/settings':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SettingsScreen(
-                        refreshTrigger: settingsRefreshTrigger,
-                      ),
-                    ),
-                  );
-                  break;
-                case '/subscription':
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (context) => const SubscriptionScreen(),
-                    ),
-                  );
-                  break;
-                case '/help':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const HelpScreen(),
-                    ),
-                  );
-                  break;
-                case '/life-events':
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(
-                      builder: (context) => const LifeEventsScreen(),
-                    ),
-                  );
-                  break;
-                case '/interpreters':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const InterpretersScreen(),
-                    ),
-                  );
-                  break;
-                case '/image-styles':
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ImageStyleSelectionScreen(),
-                    ),
-                  );
-                  break;
-                case '/login':
-                  Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
-                  break;
-                case 'logout':
-                  await performLogout(context);
-                  break;
-              }
-            },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem(
-                value: '/editor',
-                child: Row(
-                  children: [
-                    Icon(Icons.visibility_off_outlined, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Hide/Delete', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person_outline, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Profile', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/settings',
-                child: Row(
-                  children: [
-                    Icon(Icons.settings_outlined, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Settings', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/life-events',
-                child: Row(
-                  children: [
-                    Icon(Icons.favorite_outline, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Life Events', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/interpreters',
-                child: Row(
-                  children: [
-                    Icon(Icons.psychology, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Dream Interpreters', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/image-styles',
-                child: Row(
-                  children: [
-                    Icon(Icons.palette_outlined, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Image Styles', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/subscription',
-                child: Row(
-                  children: [
-                    Icon(Icons.star_outline, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Subscription', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: '/help',
-                child: Row(
-                  children: [
-                    Icon(Icons.help_outline, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Help', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text('Logout', style: TextStyle(color: Colors.white)),
-                  ],
-                ),
-              ),
-            ],
+            onPressed: _openHamburgerMenu,
           ),
         ],
       ),
@@ -467,12 +457,14 @@ class _MainScaffoldState extends State<MainScaffold> {
     final currentIdx = (_selectedIndex == 3) ? 1 : _selectedIndex.clamp(0, 2);
     final isSelected = currentIdx == index;
     
-    // Always use LATEST subscription data directly from the model
-    final bool isPro = subscriptionModel.loaded ? subscriptionModel.status.isActive : _isPro;
-    final int? textRemainingWeek = subscriptionModel.loaded ? subscriptionModel.status.textRemainingWeek : _textRemainingWeek;
-    
+    // Only enforce out-of-credits state once subscription info is loaded.
+    final bool isPro = subscriptionModel.loaded ? subscriptionModel.status.isActive : false;
+    final int? textRemainingWeek =
+        subscriptionModel.loaded ? subscriptionModel.status.textRemainingWeek : null;
+
     // Check if this is the New Dream button and user is out of credits
-    final bool isOutOfCredits = index == 0 && !isPro && (textRemainingWeek ?? 0) <= 0;
+    final bool isOutOfCredits = index == 0 && subscriptionModel.loaded &&
+        !isPro && (textRemainingWeek ?? 0) <= 0;
     
     // For debugging
     if (index == 0) {
