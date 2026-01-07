@@ -596,15 +596,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  status.autoRenew ? 'Auto-renews' : 'Does not auto-renew',
-                  style: TextStyle(
-                    color: status.autoRenew
-                        ? Colors.green.shade300
-                        : Colors.orange.shade300,
-                    fontSize: 14,
-                  ),
-                ),
+                // Text(
+                //   status.autoRenew ? 'Auto-renews' : 'Does not auto-renew',
+                //   style: TextStyle(
+                //     color: status.autoRenew
+                //         ? Colors.green.shade300
+                //         : Colors.orange.shade300,
+                //     fontSize: 14,
+                //   ),
+                // ),
                 const SizedBox(height: 8),
                 const Text(
                   'To change or cancel your subscription, manage it from the App Store / Google Play subscriptions page.',
