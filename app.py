@@ -374,7 +374,13 @@ class SubscriptionPlan(db.Model):
     description = db.Column(db.Text)
     price = db.Column(db.Numeric(10, 2), nullable=False)
     period = db.Column(db.String(20), nullable=False)  # 'monthly', 'yearly'
+    
+    # Legacy/simple list of strings (keep for backward compatibility)
     features = db.Column(MySQLJSON)
+    
+    # New: rich feature cards (title + description, optional metadata)
+    feature_cards = db.Column(MySQLJSON)  # nullable by default
+    
     product_id = db.Column(db.String(100))
 
     created_at = db.Column(db.DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
@@ -507,7 +513,8 @@ class SubscriptionService:
             'description': plan.description,
             'price': float(plan.price),
             'period': plan.period,
-            'features': plan.features,
+            'features': plan.features,  # temporary, will remove once app is using new row below
+            'feature_cards': plan.feature_cards,
             'product_id': plan.product_id
         } for plan in plans]
     
