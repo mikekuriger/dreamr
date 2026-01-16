@@ -1965,21 +1965,70 @@ def confirm_account(token):
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    data = request.get_json() or {}
-    email = data.get("email", "").strip().lower() 
+    data = request.get_json(silent=True) or {}
+
+    email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "invalid_request", "message": "Email and password are required."}), 400
+
     user = User.query.filter_by(email=email).first()
-    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-        return jsonify({"error": "Invalid credentials"}), 401
+
+    # Do not reveal whether the email exists (prevents account enumeration)
+    if not user:
+        return jsonify({"error": "invalid_credentials", "message": "Invalid credentials"}), 401
+
+    # Handle social-only accounts (no password set)
+    stored = (user.password or "").strip()
+    if not stored:
+        return jsonify({
+            "error": "password_not_set",
+            "message": "This account does not have a password. Sign in with Google/Apple or set a password."
+        }), 401
+
+    # Handle common bad storage: "b'$2b$...'" stored as text
+    if stored.startswith("b'") or stored.startswith('b"'):
+        try:
+            import ast
+            stored = ast.literal_eval(stored).decode("utf-8")
+        except Exception:
+            return jsonify({"error": "invalid_credentials", "message": "Invalid credentials"}), 401
+
+    # Verify bcrypt safely
+    try:
+        ok = bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
+    except ValueError:
+        ok = False
+
+    if not ok:
+        return jsonify({"error": "invalid_credentials", "message": "Invalid credentials"}), 401
+
     login_user(user, remember=True)
-    # return jsonify({"message": "Logged in"})
+
     return jsonify({
         "message": "Logged in",
-        "user": {
-            "id": user.id,
-            "email": user.email
-        }
-    })
+        "user": {"id": user.id, "email": user.email}
+    }), 200
+
+
+#@app.route("/api/login", methods=["POST"])
+#def login():
+#    data = request.get_json() or {}
+#    email = data.get("email", "").strip().lower() 
+#    password = data.get("password") or ""
+#    user = User.query.filter_by(email=email).first()
+#    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+#        return jsonify({"error": "Invalid credentials"}), 401
+#    login_user(user, remember=True)
+#    # return jsonify({"message": "Logged in"})
+#    return jsonify({
+#        "message": "Logged in",
+#        "user": {
+#            "id": user.id,
+#            "email": user.email
+#        }
+#    })
 
 
 @app.route("/api/logout", methods=["POST"])
@@ -3894,7 +3943,7 @@ def admin_dashboard():
                    .filter(UserSubscription.status.in_(["active","trial"])).scalar())
     pending = db.session.query(func.count(PendingUser.uuid)).scalar()
     recent_payments = (db.session.query(PaymentTransaction)
-                       .order_by(desc(PaymentTransaction.created_at)).limit(10).all())
+                       .order_by(desc(PaymentTransaction.created_at)).limit(100).all())
     BODY = """
     <h2>Dashboard</h2>
     <div style="display:flex;gap:12px;margin:16px 0">
