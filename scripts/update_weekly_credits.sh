@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export PATH=/home/mk7193/dart-dreamr/flutter/bin:/opt/dreamr-venv/bin:/usr/bin:/home/mk7193/.local/bin:/home/mk7193/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+
 date=$(date "+%Y-%m-%d %H:%M:00")
 mysql -u root -ppay4mysql dreamr -e 'select * from user_credits;'
 mysql -u root -ppay4mysql dreamr -e 'update user_credits set text_remaining_week=2,updated_at = NOW();'
