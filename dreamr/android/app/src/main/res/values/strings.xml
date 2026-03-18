@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dreamr</string>
+    <string name="facebook_app_id">981293500898395</string>
+    <string name="fb_login_protocol_scheme">fb981293500898395</string>
+    <string name="facebook_client_token">c103daad1d87e0e43a427a27f0128128</string>
+</resources>
