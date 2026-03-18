@@ -324,6 +324,19 @@ class ApiService {
     return Map<String, dynamic>.from(res.data['user'] ?? {});
   }
 
+  // Facebook auth
+  static Future<Map<String, dynamic>> facebookLogin(String accessToken) async {
+    final res = await DioClient.dio.post('/api/facebook_login', data: {'access_token': accessToken},
+      options: Options(validateStatus: (_) => true),
+    );
+    if (res.statusCode != 200) {
+      throw Exception(res.data is Map && res.data['error'] != null
+          ? res.data['error']
+          : 'Facebook login failed');
+    }
+    return Map<String, dynamic>.from(res.data['user'] ?? {});
+  }
+
   // Apple auth
   static Future<void> appleLogin({
     required String identityToken,

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dreamr/services/api_service.dart';
@@ -11,6 +12,9 @@ Future<void> performLogout(BuildContext context) async {
   final google = GoogleSignIn(scopes: ['email','profile']);
   try { await google.signOut(); } catch (_) {}
   try { await google.disconnect(); } catch (_) {}
+
+  // kill Facebook session
+  try { await FacebookAuth.instance.logOut(); } catch (_) {}
 
   // kill server session + cookies
   await ApiService.logout();

@@ -44,6 +44,7 @@ class NotificationService {
   static const int _inactive2Id = 2002;
   static const int _inactive4Id = 2004;
   static const int _inactive7Id = 2007;
+  static const int _creditResetNotifId = 3001;
 
   // ===== State =====
   bool _isInitialized = false;
@@ -446,6 +447,65 @@ class NotificationService {
     );
   }
 
+  /// Schedule a Sunday credit-reset reminder for free users who are below their 2-credit limit.
+  Future<void> scheduleCreditResetReminder(TimeOfDay time) async {
+    await init();
+
+    // Check subscription — skip for paid users or those already at full credits
+    try {
+      final status = await ApiService.getSubscriptionStatus();
+      final isPaid = status.tier != 'free';
+      final credits = status.textRemainingWeek;
+      if (isPaid || (credits != null && credits >= 2)) return;
+    } catch (_) {
+      return; // If we can't check, don't send
+    }
+
+    const channelId = 'dreamr_credit_reset';
+    final android = _fln.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(const AndroidNotificationChannel(
+      channelId,
+      'Credit Reset Reminders',
+      description: 'Weekly notification when free dream credits reset',
+      importance: Importance.high,
+      enableLights: true,
+      playSound: true,
+    ));
+
+    final details = const NotificationDetails(
+      android: AndroidNotificationDetails(
+        channelId, 'Credit Reset Reminders',
+        channelDescription: 'Weekly notification when free dream credits reset',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        threadIdentifier: 'dreamr.credit_reset',
+      ),
+    );
+
+    // Find next Sunday at the requested time
+    tz.TZDateTime target = _nextInstance(time);
+    while (target.weekday != DateTime.sunday) {
+      target = target.add(const Duration(days: 1));
+    }
+
+    await _fln.zonedSchedule(
+      _creditResetNotifId,
+      'Your dream credits are back!',
+      'You have 2 free dream analyses this week. Open Dreamr and record last night\'s dream.',
+      target,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime, // repeats every Sunday
+      payload: 'credit_reset',
+    );
+  }
+
 /// Cancel the scheduled weekly reminder.
   Future<void> scheduleInactivityNudges({TimeOfDay fireTime = const TimeOfDay(hour: 9, minute: 0)}) async {
     await init();
@@ -537,11 +597,13 @@ class NotificationService {
     await _fln.cancel(_inactive2Id);
     await _fln.cancel(_inactive4Id);
     await _fln.cancel(_inactive7Id);
+    await _fln.cancel(_creditResetNotifId);
 
     // Rebuild
     await scheduleMorningReminder(dailyTime);
     await scheduleWeeklyReminder(time: const TimeOfDay(hour: 9, minute: 0), weekday: weeklyWeekday);
     await scheduleInactivityNudges();
+    await scheduleCreditResetReminder(dailyTime);
 
     // Optional: streak encouragement tomorrow 8:00 if streak >= 2
     if ((streakDays ?? 0) >= 2) {

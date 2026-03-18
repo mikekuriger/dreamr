@@ -12,6 +12,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 // import 'package:url_launcher/url_launcher.dart';
 import 'package:dreamr/screens/privacy_policy_screen.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'dart:io' show Platform;
 
 
@@ -158,6 +159,54 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Sign out to clean up any partial sign-in state
       _googleSignIn.signOut();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ===== Facebook login =====
+  Future<void> _handleFacebookLogin() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final result = await FacebookAuth.instance.login(permissions: ['email', 'public_profile']);
+
+      if (result.status == LoginStatus.cancelled) {
+        setState(() => _loading = false);
+        return;
+      }
+      if (result.status != LoginStatus.success) {
+        throw Exception(result.message ?? 'Facebook login failed');
+      }
+
+      final accessToken = result.accessToken?.tokenString;
+      if (accessToken == null) throw Exception('Failed to get Facebook access token');
+
+      final user = await ApiService.facebookLogin(accessToken);
+
+      await _secure.write(key: 'login_method', value: 'facebook');
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('loggedIn', true);
+      if (user['id'] is int) {
+        await prefs.setInt('userId', user['id']);
+      }
+
+      if (!mounted) return;
+      await navigateToPostLoginDestination(context);
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _error = msg);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+        );
+      }
+      await FacebookAuth.instance.logOut();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -391,7 +440,27 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
 
                     const SizedBox(height: 18),
-                    
+
+                    // Facebook
+                    SizedBox(
+                      width: 225,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        onPressed: _loading ? null : _handleFacebookLogin,
+                        icon: const Icon(Icons.facebook, color: Colors.white),
+                        label: const Text(
+                          'Continue with Facebook',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1877F2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
                     // Apple (iOS only)
                     if (Platform.isIOS) 
                       Center(

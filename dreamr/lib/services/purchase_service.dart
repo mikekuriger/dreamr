@@ -6,6 +6,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 // import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 import 'package:dreamr/services/api_service.dart';
+import 'package:facebook_app_events/facebook_app_events.dart';
 
 /// Service for handling in-app purchases and subscriptions
 class PurchaseService {
@@ -14,6 +15,7 @@ class PurchaseService {
   PurchaseService._internal();
 
   final InAppPurchase _inAppPurchase = InAppPurchase.instance;
+  final FacebookAppEvents _facebookEvents = FacebookAppEvents();
   StreamSubscription<List<PurchaseDetails>>? _subscription;
   List<ProductDetails> _products = [];
   bool _isAvailable = false;
@@ -251,6 +253,17 @@ class PurchaseService {
           productId,
           paymentProvider: provider,
           receiptData: receipt,
+        );
+
+        // Log purchase to Facebook Ads
+        final product = _products.firstWhere(
+          (p) => p.id == productId,
+          orElse: () => _products.first,
+        );
+        await _facebookEvents.logPurchase(
+          amount: product.rawPrice,
+          currency: product.currencyCode,
+          parameters: {'content_id': productId},
         );
       } else {
         debugPrint(
