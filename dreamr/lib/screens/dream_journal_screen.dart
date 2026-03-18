@@ -578,7 +578,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                   padding: const EdgeInsets.all(12), // height of stat box
                   decoration: BoxDecoration(
                     // color: const Color.fromARGB(255, 0, 0, 0).withValues(alpha: 0.4),
-                    color: AppColors.black.withAlpha(200),                           // Credits Background
+                    color: AppColors.black.withAlpha(200),                           // Credits/Dreams Logged Background
                     // color: AppColors.purple950, // Dark purple background
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(

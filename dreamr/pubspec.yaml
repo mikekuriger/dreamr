@@ -88,6 +88,7 @@ dependencies:
   in_app_purchase_android: ^0.4.0+8
   in_app_purchase_storekit: ^0.4.6+2
   flutter_facebook_auth: ^7.0.1
+  flutter_slidable: ^3.1.0
   facebook_app_events: ^0.26.0
 
 dependency_overrides:

@@ -4,8 +4,10 @@ import 'package:dreamr/models/dream.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/services/dio_client.dart';
 import 'package:dreamr/services/image_store.dart';
+import 'package:dreamr/theme/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 import 'package:share_plus/share_plus.dart';
@@ -34,6 +36,7 @@ class DreamJournalWidget extends StatefulWidget {
   State<DreamJournalWidget> createState() => DreamJournalWidgetState();
 }
 
+// Kept for potential future use; card colors now come from AppColors
 class ToneStyle {
   final Color background;
   final Color text;
@@ -281,33 +284,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
   }
 
   
-  ToneStyle _getToneStyle(String tone) {
-    final t = tone.toLowerCase().trim();
-    switch (t) {
-      case 'peaceful / gentle':
-        return ToneStyle(Colors.blue.shade100, Colors.black87);
-      case 'epic / heroic':
-        return ToneStyle(Colors.orange.shade100, Colors.black87);
-      case 'whimsical / surreal':
-        return ToneStyle(Colors.purple.shade100, Colors.black87);
-      case 'nightmarish / dark':
-        // return ToneStyle(Colors.black, Colors.red.shade500);  // 👈 spooky red
-        return ToneStyle(const Color.fromARGB(255, 26, 25, 25), const Color.fromARGB(255, 255, 167, 43));  // 👈 spooky orange
-        // return ToneStyle(Colors.grey.shade900, const Color.fromARGB(255, 81, 255, 241));  // 👈 glowing blue
-      case 'romantic / nostalgic':
-        return ToneStyle(Colors.pink.shade100, Colors.black87);
-      case 'ancient / mythic':
-        return ToneStyle(Colors.brown.shade100, Colors.black87);
-      case 'futuristic / uncanny':
-        return ToneStyle(Colors.teal.shade100, Colors.black87);
-      case 'elegant / ornate':
-        return ToneStyle(Colors.indigo.shade100, Colors.black87);
-      default:
-        return ToneStyle(Colors.grey.shade100, Colors.black87);
-    }
-  }
-
-  // Tone symbol helper 
+  // Tone symbol helper
   String toneSymbol(String tone) {
     final t = tone.toLowerCase();
     if (t.contains('peaceful')) return '☁️';             // soft cloud
@@ -320,6 +297,67 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     // if (t.contains('elegant')) return '༻❁༺';           // ornate flower
     if (t.contains('elegant')) return '••࿐••';           // ornate flower
     return '✨';                                         // default separator
+  }
+
+  // Color dot next to tone symbol in collapsed header
+  Color toneIndicatorColor(String tone) {
+    final t = tone.toLowerCase();
+    if (t.contains('peaceful'))    return Colors.blue.shade300;
+    if (t.contains('epic'))        return Colors.orange.shade400;
+    if (t.contains('whimsical'))   return Colors.purple.shade300;
+    if (t.contains('nightmarish')) return Colors.red.shade400;
+    if (t.contains('romantic'))    return Colors.pink.shade300;
+    if (t.contains('ancient'))     return Colors.brown.shade300;
+    if (t.contains('futuristic'))  return Colors.teal.shade300;
+    if (t.contains('elegant'))     return Colors.indigo.shade300;
+    return Colors.grey.shade400;
+  }
+
+  Future<void> _deleteDream(Dream dream) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Dream'),
+        content: const Text('This will permanently delete this dream. Are you sure?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ApiService.deleteDream(dream.id);
+      if (!mounted) return;
+      setState(() {
+        _dreams.removeWhere((d) => d.id == dream.id);
+        _expanded.remove(dream.id);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete dream')),
+      );
+    }
+  }
+
+  Future<void> _hideDream(Dream dream) async {
+    try {
+      await ApiService.toggleHiddenDream(dream.id);
+      if (!mounted) return;
+      setState(() {
+        _dreams.removeWhere((d) => d.id == dream.id);
+        _expanded.remove(dream.id);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to hide dream')),
+      );
+    }
   }
 
 // Compute origin rect for share sheets (iPad/macOS need an anchor).
@@ -805,7 +843,6 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
           itemBuilder: (context, index) {
             final dream = dreamsToDisplay[index];
             final isExpanded = _expanded[dream.id] ?? false;
-            final toneStyle = _getToneStyle(dream.tone);
             final isIpadLike = Platform.isIOS &&
                 MediaQuery.of(context).size.shortestSide >= 600;
             final double tileSize = isIpadLike ? 70 : 52;
@@ -815,28 +852,66 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
             final discussLoading = _discussLoading.contains(dream.id);
 
             return Padding(
-              key: Key('dream-${dream.id}'), // Add unique key for proper widget reuse
-              padding: const EdgeInsets.symmetric(vertical: 4),         // space between cards
-              child: Container(
-                width: double.infinity,
-                padding: EdgeInsets.zero,                               // no global padding
-                decoration: BoxDecoration(
-                  color: toneStyle.background,
-                  borderRadius: BorderRadius.circular(6),               // BORDER settings
-                  border: Border.all(
-                    // color: toneStyle.text.withValues(alpha: 1),
-                    color: Color.fromARGB(255, 81, 255, 241).withValues(alpha: 1),
-                    width: .5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color.fromARGB(200, 114, 210, 255),
-                      blurRadius: 7,
-                      offset: const Offset(0, 2),
+              key: Key('dream-${dream.id}'),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Slidable(
+                key: ValueKey(dream.id),
+                enabled: !isExpanded,
+                startActionPane: ActionPane(
+                  motion: const DrawerMotion(),
+                  extentRatio: 0.25,
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => _hideDream(dream),
+                      backgroundColor: Colors.indigo.shade700,
+                      foregroundColor: Colors.white,
+                      icon: Icons.visibility_off,
+                      label: 'Hide',
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(6),
+                        bottomLeft: Radius.circular(6),
+                      ),
                     ),
                   ],
                 ),
-                child: Column(
+                endActionPane: ActionPane(
+                  motion: const DrawerMotion(),
+                  extentRatio: 0.25,
+                  children: [
+                    SlidableAction(
+                      onPressed: (_) => _deleteDream(dream),
+                      backgroundColor: Colors.red.shade700,
+                      foregroundColor: Colors.white,
+                      icon: Icons.delete,
+                      label: 'Delete',
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(6),
+                        bottomRight: Radius.circular(6),
+                      ),
+                    ),
+                  ],
+                ),
+                child: GestureDetector(
+                  onTap: !isExpanded ? () {
+                    setState(() => _expanded[dream.id] = true);
+                    _loadDiscussIfNeeded(dream.id);
+                  } : null,
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.zero,
+                    decoration: BoxDecoration(
+                      color: AppColors.dreamCardBackground,                // Card background color
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.dreamCardBorder, width: .5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.dreamCardShadow,
+                          blurRadius: 7,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // COLLAPSED ROW (image + title line)
@@ -883,22 +958,42 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          formattedDate,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: toneStyle.text,
-                                          ),
+                                        // Date + tone indicator row
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                formattedDate,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.dreamCardText,
+                                                ),
+                                              ),
+                                            ),
+         // DOT                             // Container(
+                                            //   width: 8, height: 8,
+                                            //   decoration: BoxDecoration(
+                                            //     color: toneIndicatorColor(dream.tone),
+                                            //     shape: BoxShape.circle,
+                                            //   ),
+                                            // ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              toneSymbol(dream.tone),
+                                              style: const TextStyle(fontSize: 13),
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
                                         ),
                                         Text(
                                           dream.summary,
                                           maxLines: 1,
                                           softWrap: false,
                                           overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
+                                          style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 13,
-                                            color: toneStyle.text,
+                                            color: AppColors.dreamCardText,
                                           ),
                                         ),
                                       ],
@@ -913,22 +1008,38 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    formattedDate,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: toneStyle.text,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          formattedDate,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: AppColors.dreamCardText,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 8, height: 8,
+                                        decoration: BoxDecoration(
+                                          color: toneIndicatorColor(dream.tone),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(toneSymbol(dream.tone), style: const TextStyle(fontSize: 13)),
+                                      const SizedBox(width: 4),
+                                    ],
                                   ),
                                   Text(
                                     dream.summary,
                                     maxLines: 1,
                                     softWrap: false,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 13,
-                                      color: toneStyle.text,
+                                      color: AppColors.dreamCardText,
                                     ),
                                   ),
                                 ],
@@ -951,7 +1062,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                     children: [
                                       Expanded(
                                         child: Divider(
-                                          color: toneStyle.text
+                                          color: AppColors.dreamCardText
                                               .withValues(alpha: 0.25),
                                           thickness: 1,
                                           indent: 16,
@@ -964,14 +1075,14 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                           toneSymbol(dream.tone), // 🕷️, 🌸, ☁️, etc.
                                           style: TextStyle(
                                             fontSize: 20,
-                                            color: toneStyle.text
+                                            color: AppColors.dreamCardText
                                                 .withValues(alpha: 0.7),
                                           ),
                                         ),
                                       ),
                                       Expanded(
                                         child: Divider(
-                                          color: toneStyle.text
+                                          color: AppColors.dreamCardText
                                               .withValues(alpha: 0.25),
                                           thickness: 1,
                                           endIndent: 16,
@@ -988,7 +1099,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                         ),
                                       ),
                                       const SizedBox(width: 6),
@@ -997,7 +1108,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontStyle: FontStyle.italic,
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                         ),
                                       ),
                                     ],
@@ -1011,7 +1122,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontStyle: FontStyle.italic,
-                                        color: toneStyle.text,
+                                        color: AppColors.dreamCardText,
                                       ),
                                     ),
                                     const SizedBox(height: 10),
@@ -1037,7 +1148,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       gradient: LinearGradient(
                                         colors: [
                                           Colors.transparent,
-                                          toneStyle.text
+                                          AppColors.dreamCardText
                                               .withValues(alpha: 0.7),
                                           Colors.transparent,
                                         ],
@@ -1052,7 +1163,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.bold,
-                                        color: toneStyle.text,
+                                        color: AppColors.dreamCardText,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -1064,24 +1175,24 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                                   Theme.of(context))
                                               .copyWith(
                                         p: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 13,
                                         ),
                                         strong: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         em: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontStyle: FontStyle.italic,
                                         ),
                                         h1: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         h2: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -1102,7 +1213,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.bold,
-                                        color: toneStyle.text,
+                                        color: AppColors.dreamCardText,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -1117,20 +1228,20 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             if (userTxt.isNotEmpty) ...[
-                                              Text("You:", style: TextStyle(fontWeight: FontWeight.bold, color: toneStyle.text, fontSize: 12)),
+                                              Text("You:", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.dreamCardText, fontSize: 12)),
                                               const SizedBox(height: 2),
-                                              SelectableText(userTxt, style: TextStyle(color: toneStyle.text, fontSize: 13)),
+                                              SelectableText(userTxt, style: TextStyle(color: AppColors.dreamCardText, fontSize: 13)),
                                               const SizedBox(height: 6),
                                             ],
                                             if (aiTxt.isNotEmpty) ...[
-                                              Text("Dreamr:", style: TextStyle(fontWeight: FontWeight.bold, color: toneStyle.text, fontSize: 12)),
+                                              Text("Dreamr:", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.dreamCardText, fontSize: 12)),
                                               const SizedBox(height: 2),
                                               MarkdownBody(
                                                 data: aiTxt,
                                                 styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                                                  p: TextStyle(color: toneStyle.text, fontSize: 13),
-                                                  strong: TextStyle(color: toneStyle.text, fontWeight: FontWeight.bold),
-                                                  em: TextStyle(color: toneStyle.text, fontStyle: FontStyle.italic),
+                                                  p: TextStyle(color: AppColors.dreamCardText, fontSize: 13),
+                                                  strong: TextStyle(color: AppColors.dreamCardText, fontWeight: FontWeight.bold),
+                                                  em: TextStyle(color: AppColors.dreamCardText, fontStyle: FontStyle.italic),
                                                 ),
                                               ),
                                             ],
@@ -1150,7 +1261,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.bold,
-                                        color: toneStyle.text,
+                                        color: AppColors.dreamCardText,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -1161,24 +1272,24 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                                   Theme.of(context))
                                               .copyWith(
                                         p: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 12,
                                         ),
                                         strong: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         em: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontStyle: FontStyle.italic,
                                         ),
                                         h1: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 18,
                                           fontWeight: FontWeight.bold,
                                         ),
                                         h2: TextStyle(
-                                          color: toneStyle.text,
+                                          color: AppColors.dreamCardText,
                                           fontSize: 16,
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -1204,7 +1315,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor:
                                               const Color.fromARGB(
-                                                  255, 75, 3, 143),
+                                                  255, 75, 3, 143),          // Notes button color
                                           foregroundColor: Colors.white,
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 10, vertical: 8),
@@ -1310,7 +1421,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                             // Icons.keyboard_arrow_up, // or Icons.expand_less
                                             Icons.expand_less,
                                             size: 32,
-                                            color: toneStyle.text,
+                                            color: AppColors.dreamCardText,
                                           ),
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
@@ -1329,7 +1440,9 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                     ),
                   ],
                 ),
-              ),
+                ),  // Container
+              ),    // GestureDetector
+            ),      // Slidable
             );
           },
         ),

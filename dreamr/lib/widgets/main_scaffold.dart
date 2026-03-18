@@ -164,9 +164,9 @@ class _MainScaffoldState extends State<MainScaffold> {
           value: '/editor',
           child: Row(
             children: [
-              Icon(Icons.visibility_off_outlined, color: Colors.white),
+              Icon(Icons.archive_outlined, color: Colors.white),
               SizedBox(width: 8),
-              Text('Hide/Delete', style: TextStyle(color: Colors.white)),
+              Text('Hidden Dreams', style: TextStyle(color: Colors.white)),
             ],
           ),
         ),

@@ -82,7 +82,7 @@ class _DreamJournalEditorScreenState extends State<DreamJournalEditorScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Hide / Delete ✨ Dreams',
+                            'Hidden Dreams',
                             style: TextStyle(
                               fontSize: 15,
                               color: Colors.white,
@@ -104,9 +104,9 @@ class _DreamJournalEditorScreenState extends State<DreamJournalEditorScreen> {
                         secondChild: const Padding(
                           padding: EdgeInsets.only(top: 8),
                           child: Text(
-                            "Tap the eye icon to hide/unhide a dream.\n"
-                            "Tap the trash icon to delete permanently.\n"
-                            "Deleted items can’t be recovered.",
+                            "These are dreams you’ve hidden from your main journal.\n"
+                            "Tap the eye icon to unhide a dream.\n"
+                            "Tap the trash icon to delete permanently — this can’t be undone.",
                             style: TextStyle(fontSize: 14, color: Colors.white70),
                           ),
                         ),

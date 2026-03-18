@@ -71,7 +71,7 @@ class DreamJournalEditorWidgetState extends State<DreamJournalEditorWidget> {
     try {
       final dreams = await ApiService.fetchAllDreams();
       setState(() {
-        _dreams = dreams;
+        _dreams = dreams.where((d) => d.hidden).toList();
         _loading = false;
       });
       widget.onDreamsLoaded?.call();
