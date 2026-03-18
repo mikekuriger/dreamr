@@ -194,29 +194,25 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
 
   // Get filtered dreams for the selected date
   List<Dream> getFilteredDreams() {
-    final allDreams = _journalKey.currentState?.getDreams() ?? [];
-    
-    if (_selectedDay == null) {
-      return allDreams; // Return all dreams if no date is selected
+    // Always start from the raw unfiltered list so stacked filters don't compound
+    var dreams = _journalKey.currentState?.getRawDreams() ?? [];
+
+    if (_selectedDay != null) {
+      dreams = dreams.where((dream) {
+        final dreamDate = DateTime(dream.createdAt.year, dream.createdAt.month, dream.createdAt.day);
+        final selectedDate = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day);
+        return dreamDate.isAtSameMomentAs(selectedDate);
+      }).toList();
     }
-    
-    // Filter dreams for the selected day
-    return allDreams.where((dream) {
-      final dreamDate = DateTime(
-        dream.createdAt.year, 
-        dream.createdAt.month, 
-        dream.createdAt.day
-      );
-      
-      final selectedDate = DateTime(
-        _selectedDay!.year, 
-        _selectedDay!.month, 
-        _selectedDay!.day
-      );
-      
-      return dreamDate.isAtSameMomentAs(selectedDate);
-    }).toList();
+
+    if (_activeToneFilter != null) {
+      dreams = dreams.where((d) => d.tone.trim().toLowerCase() == _activeToneFilter).toList();
+    }
+
+    return dreams;
   }
+
+  bool get _anyFilterActive => _selectedDay != null || _activeToneFilter != null;
 
   // Check if a specific day has dreams
   bool hasDreamsOnDay(DateTime day) {
@@ -289,62 +285,73 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
     
     // Create a list of mood bar widgets
     return sortedEntries.map((entry) {
-      // Calculate percentage for the progress bar
-      final percentage = _dreamCount > 0 
-          ? entry.value / _dreamCount 
-          : 0.0;
-      
-      // Generate a color based on the mood name
+      final percentage = _dreamCount > 0 ? entry.value / _dreamCount : 0.0;
       final color = _getMoodColor(entry.key);
-      
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          children: [
-            // Color indicator
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
+      final isSelected = _activeToneFilter == entry.key;
+
+      return GestureDetector(
+        onTap: () {
+          setState(() {
+            if (isSelected) {
+              _activeToneFilter = null;
+              _journalKey.currentState?.refresh();
+            } else {
+              _activeToneFilter = entry.key;
+              _statsExpanded = false; // auto-close stats card
+            }
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: isSelected ? color.withValues(alpha: 0.18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            border: isSelected ? Border.all(color: color.withValues(alpha: 0.5), width: 1) : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 10, height: 10,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
-            ),
-            const SizedBox(width: 8),
-            // Mood name
-            Text(
-              entry.key,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontStyle: FontStyle.italic,
-                fontSize: 14,
+              const SizedBox(width: 8),
+              Text(
+                entry.key,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.white70,
+                  fontStyle: FontStyle.italic,
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(width: 8),
-            // Progress bar
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: percentage,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
-                  minHeight: 6,
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: percentage,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                    minHeight: 6,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // Count only (no percentage)
-            Text(
-              "${entry.value}",
-              style: const TextStyle(
-                color: Colors.yellow,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+              const SizedBox(width: 8),
+              Text(
+                "${entry.value}",
+                style: const TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold, fontSize: 14),
               ),
-            ),
-          ],
+              const SizedBox(width: 4),
+              Icon(
+                isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 14,
+                color: isSelected ? color : Colors.white24,
+              ),
+            ],
+          ),
         ),
       );
     }).toList();
@@ -892,11 +899,46 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
             ),
 
 
+            // Active tone filter chip
+            if (_activeToneFilter != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.purple950.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _activeToneFilter!,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontStyle: FontStyle.italic),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() => _activeToneFilter = null);
+                              _journalKey.currentState?.refresh();
+                            },
+                            child: const Icon(Icons.close, size: 14, color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // Dream list with filtered dreams
             Builder(
               builder: (context) {
                 final filteredDreams = getFilteredDreams();
-                
+
                 // Show message if no dreams match the selected date
                 if (_selectedDay != null && filteredDreams.isEmpty) {
                   return Container(
@@ -936,7 +978,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                 return DreamJournalWidget(
                   key: _journalKey,
                   onDreamsLoaded: _refreshStats,
-                  filteredDreams: _selectedDay != null ? filteredDreams : null,
+                  filteredDreams: _anyFilterActive ? filteredDreams : null,
                 );
               },
             ),

@@ -249,6 +249,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
   List<Dream> _dreams = [];
   // Return filtered dreams if available, otherwise return all dreams
   List<Dream> getDreams() => widget.filteredDreams ?? _dreams;
+  List<Dream> getRawDreams() => _dreams;
 
   final Map<int, bool> _expanded = {};
   bool _loading = true;
