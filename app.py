@@ -1396,6 +1396,77 @@ def api_google_login():
         return jsonify({"error": "Invalid token, naughty!"}), 400
 
 
+# for facebook logins via mobile app
+@app.route('/api/facebook_login', methods=['POST'])
+def api_facebook_login():
+    data = request.get_json(silent=True) or {}
+    access_token = data.get('access_token')
+    if not access_token:
+        return jsonify({"error": "missing access_token"}), 400
+
+    try:
+        # Verify the token and get user info from Facebook Graph API
+        import urllib.request as _urllib_req
+        import json as _json
+
+        graph_url = (
+            f"https://graph.facebook.com/me"
+            f"?fields=id,name,email"
+            f"&access_token={access_token}"
+        )
+        with _urllib_req.urlopen(graph_url, timeout=10) as resp:
+            fb_data = _json.loads(resp.read())
+
+        fb_id    = fb_data.get("id")
+        email    = (fb_data.get("email") or "").strip().lower()
+        full_name = fb_data.get("name") or ""
+        first_name = full_name.split()[0] if full_name else "Unknown"
+
+        if not fb_id:
+            raise ValueError("Facebook did not return a user id")
+
+        # If Facebook didn't share the email, use a stable placeholder
+        if not email:
+            email = f"fb_{fb_id}@facebook.placeholder"
+
+        # 1) Try existing user by email
+        user = User.query.filter(func.lower(User.email) == email).first()
+
+        if not user:
+            # 2) Try deleted/reactivated user: email stored as hash
+            email_hash = hash_string_secret(email)
+            deleted = User.query.filter(User.email == email_hash).first()
+
+            if deleted:
+                deleted.email = email
+                deleted.first_name = first_name or deleted.first_name
+                deleted.email_confirmed = True
+                db.session.commit()
+                user = deleted
+            else:
+                # 3) Truly new user
+                user = User(
+                    email=email,
+                    first_name=first_name,
+                    password='',
+                    timezone='',
+                    email_confirmed=True,
+                )
+                db.session.add(user)
+                db.session.commit()
+        else:
+            if not user.email_confirmed:
+                user.email_confirmed = True
+                db.session.commit()
+
+        login_user(user)
+        return jsonify({"success": True, "user": {"id": user.id}})
+
+    except Exception as e:
+        logger.info("facebook login failed: %s", e)
+        return jsonify({"error": "Facebook login failed"}), 400
+
+
 # helper for Apple verification
 def verify_apple_identity_token(identity_token: str) -> dict:
     """Verify an Apple Sign in with Apple identity token (JWT) and return its claims."""
