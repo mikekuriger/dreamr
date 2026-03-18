@@ -45,6 +45,9 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
   bool _showCalendar = false; // Collapsed by default
   Map<DateTime, List<Dream>> _dreamsByDate = {};
   
+  // Tone filter
+  String? _activeToneFilter;
+
   // Visibility preferences
   bool _showStatsSection = true; // Controls if stats section is shown at all
   bool _showCalendarSection = true; // Controls if calendar section is shown at all

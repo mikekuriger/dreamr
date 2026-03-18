@@ -1,6 +1,7 @@
 // widgets/dream_journal_widget.dart
 import 'dart:io';
 import 'package:dreamr/models/dream.dart';
+import 'package:dreamr/screens/dream_detail_screen.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/services/dio_client.dart';
 import 'package:dreamr/services/image_store.dart';
@@ -700,6 +701,16 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
     );
   }
 
+  PageRouteBuilder<void> _dreamFadeRoute(Widget page) => PageRouteBuilder(
+        opaque: false,
+        barrierColor: AppColors.purple950,
+        transitionDuration: const Duration(milliseconds: 400),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, _, _) => page,
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+      );
+
   // Get discussions
   Future<void> _loadDiscussIfNeeded(int dreamId) async {
     if (_isPro != true) return;
@@ -892,10 +903,17 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                   ],
                 ),
                 child: GestureDetector(
-                  onTap: !isExpanded ? () {
-                    setState(() => _expanded[dream.id] = true);
-                    _loadDiscussIfNeeded(dream.id);
-                  } : null,
+                  onTap: widget.embeddedInScrollView
+                      ? () {
+                          Navigator.push(
+                            context,
+                            _dreamFadeRoute(DreamDetailScreen(dream: dream)),
+                          ).then((_) => _loadDreams());
+                        }
+                      : (!isExpanded ? () {
+                          setState(() => _expanded[dream.id] = true);
+                          _loadDiscussIfNeeded(dream.id);
+                        } : null),
                   child: Container(
                     width: double.infinity,
                     padding: EdgeInsets.zero,
@@ -916,14 +934,21 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                   children: [
                     // COLLAPSED ROW (image + title line)
                     GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _expanded[dream.id] = !isExpanded;
-                        });
-                        if (!isExpanded) {
-                          _loadDiscussIfNeeded(dream.id);
-                        }
-                      },
+                      onTap: widget.embeddedInScrollView
+                          ? () {
+                              Navigator.push(
+                                context,
+                                _dreamFadeRoute(DreamDetailScreen(dream: dream)),
+                              ).then((_) => _loadDreams());
+                            }
+                          : () {
+                              setState(() {
+                                _expanded[dream.id] = !isExpanded;
+                              });
+                              if (!isExpanded) {
+                                _loadDiscussIfNeeded(dream.id);
+                              }
+                            },
                       child: widget.embeddedInScrollView
                           // Main journal view: show tile image + text like before
                           ? Row(
