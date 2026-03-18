@@ -3357,17 +3357,21 @@ def delete_dream(dream_id):
             .filter_by(dream_id=dream.id, user_id=current_user.id)
             .delete(synchronize_session=False))
 
-        # Move image files to archive folder
-        if dream.image_file:
-            image_path = os.path.join("static", "images", "dreams", dream.image_file)
-            tile_path = os.path.join("static", "images", "tiles", dream.image_file)
-            archive_dir = os.path.join("static", "images", "deleted")
+        # Move image files to archive folder — best-effort, never blocks the delete
+        if dream.image_file and dream.image_file.strip():
+            try:
+                image_filename = os.path.basename(dream.image_file.strip())
+                image_path = os.path.join("static", "images", "dreams", image_filename)
+                tile_path = os.path.join("static", "images", "tiles", image_filename)
+                archive_dir = os.path.join("static", "images", "deleted")
 
-            os.makedirs(archive_dir, exist_ok=True)
+                os.makedirs(archive_dir, exist_ok=True)
 
-            for path in [image_path, tile_path]:
-                if os.path.exists(path):
-                    shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+                for path in [image_path, tile_path]:
+                    if os.path.exists(path):
+                        shutil.move(path, os.path.join(archive_dir, os.path.basename(path)))
+            except Exception as img_err:
+                print(f"[WARN] Could not archive image for dream {dream_id}: {img_err}")
 
         db.session.delete(dream)
         db.session.commit()
