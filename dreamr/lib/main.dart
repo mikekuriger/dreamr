@@ -25,8 +25,7 @@ import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/state/selected_interpreter_model.dart';
 import 'package:dreamr/state/display_scale_model.dart';
 import 'package:dreamr/services/notification_service.dart';
-
-final RouteObserver<PageRoute> dreamrRouteObserver = RouteObserver<PageRoute>();
+import 'package:dreamr/services/route_observer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -87,7 +86,7 @@ class DreamrApp extends StatelessWidget {
 
         return MediaQuery(
           data: mq.copyWith(
-            textScaleFactor: mq.textScaleFactor * totalScale,
+            textScaler: TextScaler.linear(mq.textScaler.scale(1.0) * totalScale),
           ),
           child: Theme(
             data: baseTheme.copyWith(

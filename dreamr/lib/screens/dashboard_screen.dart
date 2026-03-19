@@ -19,6 +19,7 @@ import 'package:dreamr/models/interpreter.dart';  // For Interpreter class
 import 'package:provider/provider.dart';
 import 'package:dreamr/state/selected_interpreter_model.dart';
 import 'package:dreamr/screens/interpreters_screen.dart';  // For InterpreterHelper
+import 'package:dreamr/services/route_observer.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
@@ -44,7 +45,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   final TextEditingController _controller = TextEditingController();
   final AudioPlayer _player = AudioPlayer();
 
@@ -224,6 +225,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     // Initialize with current value
     _onInterpreterChanged();
 
+    // Subscribe to route events so we can hide/show the tip on Navigator push/pop
+    final route = ModalRoute.of(context);
+    if (route != null) dreamrRouteObserver.subscribe(this, route as PageRoute);
   }
 
   @override
@@ -234,6 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _micCtl?.close();
     widget.refreshTrigger.removeListener(_refreshFromTrigger);
     widget.tabActiveNotifier?.removeListener(_onTabActiveChanged);
+    dreamrRouteObserver.unsubscribe(this);
     _stopRecording();
     _micAnim.dispose();
     _tipOverlay?.remove();
@@ -380,6 +385,33 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {}
   }
 
+  // RouteAware: a new screen was pushed on top (interpreter, settings, etc.)
+  @override
+  void didPushNext() {
+    // Only hide if dashboard tab is active — other tabs pushing routes shouldn't affect us
+    final tabActive = widget.tabActiveNotifier?.value ?? true;
+    if (!tabActive) return;
+    if (_tipOverlay != null) {
+      _tipOverlay!.remove();
+      _tipOverlay = null;
+    }
+  }
+
+  // RouteAware: the screen on top was popped and dashboard is visible again
+  @override
+  void didPopNext() {
+    // DashboardScreen is always mounted in the IndexedStack, so this fires even
+    // when other tabs push/pop routes. Only re-show if dashboard tab is active.
+    final tabActive = widget.tabActiveNotifier?.value ?? true;
+    if (!tabActive) return;
+    if (_tipHasBeenShown && !_tipSeenPermanently && _tipOverlay == null) {
+      // Delay past the pop animation (~300 ms) so the button is at its final position
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (mounted && !_tipSeenPermanently && _tipOverlay == null) _showTipOverlay();
+      });
+    }
+  }
+
   void _onTabActiveChanged() {
     final isActive = widget.tabActiveNotifier?.value ?? true;
     if (!isActive && _tipOverlay != null) {
@@ -403,21 +435,27 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _showTipOverlay() {
     final ctx = _interpreterButtonKey.currentContext;
     if (ctx == null) return;
-    final renderBox = ctx.findRenderObject() as RenderBox;
-    final offset = renderBox.localToGlobal(Offset.zero);
-    final screenSize = MediaQuery.of(context).size;
 
     _tipHasBeenShown = true;
     _tipOverlay = OverlayEntry(
-      builder: (_) => Positioned(
-        left: offset.dx + 4,
-        bottom: screenSize.height - offset.dy,
-        width: 250,
-        child: Material(
-          color: Colors.transparent,
-          child: _InterpreterTipBubble(onDismiss: _dismissInterpreterTip),
-        ),
-      ),
+      builder: (_) {
+        // Recalculate position every rebuild so it's always correct
+        final btnCtx = _interpreterButtonKey.currentContext;
+        if (btnCtx == null) return const SizedBox.shrink();
+        final renderBox = btnCtx.findRenderObject() as RenderBox?;
+        if (renderBox == null || !renderBox.hasSize) return const SizedBox.shrink();
+        final offset = renderBox.localToGlobal(Offset.zero);
+        final screenSize = MediaQuery.of(context).size;
+        return Positioned(
+          left: offset.dx + 4,
+          bottom: screenSize.height - offset.dy,
+          width: 250,
+          child: Material(
+            color: Colors.transparent,
+            child: _InterpreterTipBubble(onDismiss: _dismissInterpreterTip),
+          ),
+        );
+      },
     );
     Overlay.of(context).insert(_tipOverlay!);
   }
@@ -1176,6 +1214,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     if (_selectedInterpreter != null)
                       GestureDetector(
                         onTap: () {
+                          _dismissInterpreterTip();
                           Navigator.pushNamed(context, '/interpreters');
                         },
                         child: Container(
