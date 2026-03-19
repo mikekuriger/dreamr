@@ -23,7 +23,10 @@ import 'package:dreamr/repository/dream_repository.dart';
 import 'package:dreamr/state/dream_list_model.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/state/selected_interpreter_model.dart';
+import 'package:dreamr/state/display_scale_model.dart';
 import 'package:dreamr/services/notification_service.dart';
+
+final RouteObserver<PageRoute> dreamrRouteObserver = RouteObserver<PageRoute>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +46,9 @@ void main() async {
         ),
         ChangeNotifierProvider<SelectedInterpreterModel>(
           create: (_) => SelectedInterpreterModel(),
+        ),
+        ChangeNotifierProvider<DisplayScaleModel>(
+          create: (_) => DisplayScaleModel()..init(),
         ),
       ],
       child: const DreamrApp(),
@@ -67,23 +73,21 @@ class DreamrApp extends StatelessWidget {
         if (child == null) return const SizedBox.shrink();
 
         final mq = MediaQuery.of(context);
+        final userScale = context.watch<DisplayScaleModel>().scale;
         final isIpadLike =
             !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS &&
             mq.size.shortestSide >= 600;
 
-        if (!isIpadLike) {
-          return child;
-        }
+        // iPad gets an extra 1.25× on top of the user's chosen scale.
+        final totalScale = userScale * (isIpadLike ? 1.25 : 1.0);
 
-        // iPad-only: make the app feel less cramped by scaling up text and
-        // theme-driven icon sizes. This avoids touching every widget.
-        const scale = 1.25;
+        if (totalScale == 1.0) return child;
 
-        final iconBase = (baseTheme.iconTheme.size ?? 24.0) * scale;
+        final iconBase = (baseTheme.iconTheme.size ?? 24.0) * totalScale;
 
         return MediaQuery(
           data: mq.copyWith(
-            textScaleFactor: mq.textScaleFactor * scale,
+            textScaleFactor: mq.textScaleFactor * totalScale,
           ),
           child: Theme(
             data: baseTheme.copyWith(
@@ -95,6 +99,7 @@ class DreamrApp extends StatelessWidget {
           ),
         );
       },
+      navigatorObservers: [dreamrRouteObserver],
       home: const SplashScreen(),
       routes: {
         '/login': (context) => const LoginScreen(),

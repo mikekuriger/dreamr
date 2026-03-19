@@ -1,8 +1,10 @@
 // screens/settings_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:dreamr/services/notification_service.dart';
+import 'package:dreamr/state/display_scale_model.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ValueNotifier<int> refreshTrigger;
@@ -38,7 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final prefs = await SharedPreferences.getInstance();
       final audioEnabled = prefs.getBool('enable_audio') ?? false;
       final showDreamStats = prefs.getBool('show_dream_stats') ?? true;
-      final showDreamCalendar = prefs.getBool('show_dream_calendar') ?? true;
+      final showDreamCalendar = prefs.getBool('show_dream_calendar') ?? false;
       
       setState(() {
         _enableNotifications = enabled;
@@ -260,8 +262,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   inactiveTrackColor: Colors.white30,
                 ),
                 
-                // Notification time picker
-                if (_enableNotifications) ...[
+                // Notification time picker - only shown when notifications are enabled
+                if (_enableNotifications)
                   ListTile(
                     title: const Text(
                       "Daily Reminder Time",
@@ -281,7 +283,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             data: ThemeData.dark().copyWith(
                               colorScheme: const ColorScheme.dark(
                                 primary: Color.fromARGB(255, 133, 104, 249),
-                                // primary: Colors.deepPurple,
                                 surface: Colors.black87,
                               ),
                             ),
@@ -290,55 +291,73 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       );
                       if (picked != null && picked != _notificationTime) {
-                        setState(() {
-                          _notificationTime = picked;
-                        });
+                        setState(() => _notificationTime = picked);
                         _saveNotificationTime(picked);
                       }
                     },
                   ),
 
-                  // Dream Journal Stats Visibility toggle
-                  SwitchListTile(
-                    title: Text(
-                      _showDreamStats ? "Dream Stats Visible" : "Dream Stats Hidden",
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    subtitle: const Text(
-                      "Show statistics section in Dream Journal",
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    value: _showDreamStats,
-                    onChanged: (val) {
-                      setState(() => _showDreamStats = val);
-                      _saveDreamStatsVisibility(val);
-                    },
-                    activeThumbColor: Colors.white,
-                    inactiveThumbColor: Colors.grey,
-                    inactiveTrackColor: Colors.white30,
+                // Dream Journal Stats Visibility toggle
+                SwitchListTile(
+                  title: Text(
+                    _showDreamStats ? "Dream Stats Visible" : "Dream Stats Hidden",
+                    style: const TextStyle(color: Colors.white),
                   ),
-                  
-                  // Dream Journal Calendar Visibility toggle
-                  SwitchListTile(
-                    title: Text(
-                      _showDreamCalendar ? "Dream Calendar Visible" : "Dream Calendar Hidden",
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    subtitle: const Text(
-                      "Show calendar section in Dream Journal",
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    value: _showDreamCalendar,
-                    onChanged: (val) {
-                      setState(() => _showDreamCalendar = val);
-                      _saveDreamCalendarVisibility(val);
-                    },
-                    activeThumbColor: Colors.white,
-                    inactiveThumbColor: Colors.grey,
-                    inactiveTrackColor: Colors.white30,
+                  subtitle: const Text(
+                    "Show statistics section in Dream Journal",
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
+                  value: _showDreamStats,
+                  onChanged: (val) {
+                    setState(() => _showDreamStats = val);
+                    _saveDreamStatsVisibility(val);
+                  },
+                  activeThumbColor: Colors.white,
+                  inactiveThumbColor: Colors.grey,
+                  inactiveTrackColor: Colors.white30,
+                ),
 
-                ],
+                // Dream Journal Calendar Visibility toggle
+                SwitchListTile(
+                  title: Text(
+                    _showDreamCalendar ? "Dream Calendar Visible" : "Dream Calendar Hidden",
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  subtitle: const Text(
+                    "Show calendar section in Dream Journal",
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  value: _showDreamCalendar,
+                  onChanged: (val) {
+                    setState(() => _showDreamCalendar = val);
+                    _saveDreamCalendarVisibility(val);
+                  },
+                  activeThumbColor: Colors.white,
+                  inactiveThumbColor: Colors.grey,
+                  inactiveTrackColor: Colors.white30,
+                ),
+
+                // Display Size
+                const Divider(color: Colors.white24, height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Display Size',
+                        style: TextStyle(color: Colors.white, fontSize: 15),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Adjust text and icon size across the app',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      const _DisplaySizeSelector(),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -455,6 +474,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
       body: _loading ? _buildLoadingWidget() : _buildSettingsContent(),
+    );
+  }
+}
+
+class _DisplaySizeSelector extends StatelessWidget {
+  const _DisplaySizeSelector();
+
+  static const _options = [
+    (label: 'Small',  value: 0.85),
+    (label: 'Normal', value: 1.0),
+    (label: 'Large',  value: 1.15),
+    (label: 'XL',     value: 1.3),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final model = context.watch<DisplayScaleModel>();
+    return Row(
+      children: _options.map((opt) {
+        final selected = model.scale == opt.value;
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () => context.read<DisplayScaleModel>().setScale(opt.value),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color.fromARGB(255, 75, 3, 143)
+                      : Colors.white12,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected ? Colors.white54 : Colors.transparent,
+                    width: 1,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  opt.label,
+                  style: TextStyle(
+                    color: selected ? Colors.white : Colors.white60,
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

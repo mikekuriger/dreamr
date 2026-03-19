@@ -50,7 +50,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
 
   // Visibility preferences
   bool _showStatsSection = true; // Controls if stats section is shown at all
-  bool _showCalendarSection = true; // Controls if calendar section is shown at all
+  bool _showCalendarSection = false; // Controls if calendar section is shown at all
 
 
   // Load visibility preferences from SharedPreferences
@@ -59,7 +59,7 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
       final prefs = await SharedPreferences.getInstance();
       setState(() {
         _showStatsSection = prefs.getBool('show_dream_stats') ?? true;
-        _showCalendarSection = prefs.getBool('show_dream_calendar') ?? true;
+        _showCalendarSection = prefs.getBool('show_dream_calendar') ?? false;
       });
     } catch (e) {
       debugPrint('❌ Failed to load visibility preferences: $e');

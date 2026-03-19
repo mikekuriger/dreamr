@@ -13,6 +13,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:dreamr/screens/privacy_policy_screen.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:dreamr/services/prefetch_service.dart';
 import 'dart:io' show Platform;
 
 
@@ -73,6 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setInt('userId', user['id']);
       }
 
+      PrefetchService.warmUp();
       if (!mounted) return;
       // Navigate to post-login destination (welcome tour or main scaffold)
       await navigateToPostLoginDestination(context);
@@ -144,6 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setInt('userId', user['id']);
       }
 
+      PrefetchService.warmUp();
       if (!mounted) return;
       // Navigate to post-login destination (welcome tour or main scaffold)
       await navigateToPostLoginDestination(context);
@@ -258,6 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('loggedIn', true);
 
+      PrefetchService.warmUp();
       if (!mounted) return;
       // Navigate to post-login destination (welcome tour or main scaffold)
       await navigateToPostLoginDestination(context);

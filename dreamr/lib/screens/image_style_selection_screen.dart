@@ -569,6 +569,13 @@ final List<DreamToneSectionData> _toneSections = (() {
   });
 })();
 
+/// All style preview image URLs derived from the hardcoded tone/style data.
+/// Used by PrefetchService to warm the image cache on login.
+List<String> allStylePreviewUrls() => _toneSections
+    .expand((tone) => tone.styles)
+    .expand((style) => style.exampleImageUrls)
+    .toList();
+
 class _DreamToneSection extends StatefulWidget {
   final DreamToneSectionData tone;
   final String? selectedStyleId;

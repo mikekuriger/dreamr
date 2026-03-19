@@ -29,11 +29,13 @@ import 'package:flutter_sound/flutter_sound.dart';
 
 class DashboardScreen extends StatefulWidget {
   final ValueNotifier<int> refreshTrigger;
+  final ValueNotifier<bool>? tabActiveNotifier;
   final ValueChanged<bool>? onAnalyzingChange;
 
   const DashboardScreen({
     super.key,
     required this.refreshTrigger,
+    this.tabActiveNotifier,
     this.onAnalyzingChange,
   });
 
@@ -168,6 +170,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   // Selected interpreter
   Interpreter? _selectedInterpreter;
 
+  // One-time interpreter tip overlay
+  final GlobalKey _interpreterButtonKey = GlobalKey();
+  OverlayEntry? _tipOverlay;
+  bool _tipSeenPermanently = false;
+  bool _tipHasBeenShown = false;   // true after first successful show
+
   int? _textRemainingWeek; // track # of free dreams left
   bool? _isPro;
   
@@ -179,6 +187,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _initSpeechApi();
     _loadQuota();
     _loadInitialSelectedInterpreter();
+    _checkInterpreterTip();
 
     // Listen to changes in selected interpreter
     final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
@@ -199,6 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
 
     widget.refreshTrigger.addListener(_refreshFromTrigger);
+    widget.tabActiveNotifier?.addListener(_onTabActiveChanged);
   }
   
   @override
@@ -213,6 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     interpreterModel.addListener(_onInterpreterChanged);
     // Initialize with current value
     _onInterpreterChanged();
+
   }
 
   @override
@@ -222,8 +233,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     _googleAudioCtl?.close();
     _micCtl?.close();
     widget.refreshTrigger.removeListener(_refreshFromTrigger);
+    widget.tabActiveNotifier?.removeListener(_onTabActiveChanged);
     _stopRecording();
     _micAnim.dispose();
+    _tipOverlay?.remove();
 
     // Remove interpreter listener
     final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
@@ -365,6 +378,56 @@ class _DashboardScreenState extends State<DashboardScreen>
         _playIntroAudioOnce();
       }
     } catch (_) {}
+  }
+
+  void _onTabActiveChanged() {
+    final isActive = widget.tabActiveNotifier?.value ?? true;
+    if (!isActive && _tipOverlay != null) {
+      _tipOverlay!.remove();
+      _tipOverlay = null;
+    } else if (isActive && _tipHasBeenShown && !_tipSeenPermanently && _tipOverlay == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_tipSeenPermanently && _tipOverlay == null) _showTipOverlay();
+      });
+    }
+  }
+
+  Future<void> _checkInterpreterTip() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool('interpreter_tip_seen') ?? false;
+    if (seen || !mounted) return;
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (mounted) _showTipOverlay();
+  }
+
+  void _showTipOverlay() {
+    final ctx = _interpreterButtonKey.currentContext;
+    if (ctx == null) return;
+    final renderBox = ctx.findRenderObject() as RenderBox;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final screenSize = MediaQuery.of(context).size;
+
+    _tipHasBeenShown = true;
+    _tipOverlay = OverlayEntry(
+      builder: (_) => Positioned(
+        left: offset.dx + 4,
+        bottom: screenSize.height - offset.dy,
+        width: 250,
+        child: Material(
+          color: Colors.transparent,
+          child: _InterpreterTipBubble(onDismiss: _dismissInterpreterTip),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_tipOverlay!);
+  }
+
+  Future<void> _dismissInterpreterTip() async {
+    _tipSeenPermanently = true;
+    _tipOverlay?.remove();
+    _tipOverlay = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('interpreter_tip_seen', true);
   }
 
   Future<void> _loadInitialSelectedInterpreter() async {
@@ -1116,6 +1179,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           Navigator.pushNamed(context, '/interpreters');
                         },
                         child: Container(
+                          key: _interpreterButtonKey,
                           width: 55,
                           height: 54,
                           decoration: BoxDecoration(
@@ -1203,7 +1267,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ],
                 ),
-
                 // 🖼️ Results
                 if (_message != null)
                   Container(
@@ -1387,4 +1450,128 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
+}
+
+class _InterpreterTipBubble extends StatefulWidget {
+  final VoidCallback onDismiss;
+  const _InterpreterTipBubble({required this.onDismiss});
+
+  @override
+  State<_InterpreterTipBubble> createState() => _InterpreterTipBubbleState();
+}
+
+class _InterpreterTipBubbleState extends State<_InterpreterTipBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _opacity = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.25),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutBack));
+    _anim.forward();
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  Future<void> _dismiss() async {
+    await _anim.reverse();
+    widget.onDismiss();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(
+        position: _slide,
+        child: GestureDetector(
+          onTap: _dismiss,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color.fromARGB(255, 255, 86, 86),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: const Color.fromARGB(255, 255, 0, 0), width: 1,),
+                  // boxShadow: [
+                  //   BoxShadow(
+                  //     color: Colors.purpleAccent.withValues(alpha: 0.4),
+                  //     blurRadius: 16,
+                  //     offset: const Offset(0, 4),
+                  //   ),
+                  // ],
+                ),
+                child: Row(
+                  children: [
+                    const Text('💬', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Tap here to customize your dream interpreter!',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: _dismiss,
+                      child: const Icon(Icons.close, color: Colors.white54, size: 16),
+                    ),
+                  ],
+                ),
+              ),
+              // Down-arrow pointing at interpreter button
+              const Padding(
+                padding: EdgeInsets.only(left: 20),
+                child: CustomPaint(
+                  size: Size(22, 10),
+                  painter: _DownArrowPainter(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownArrowPainter extends CustomPainter {
+  const _DownArrowPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color.fromARGB(255, 255, 0, 0)
+      ..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(10, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_DownArrowPainter oldDelegate) => false;
 }

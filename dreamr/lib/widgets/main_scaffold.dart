@@ -41,6 +41,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   late int _selectedIndex;
   late final List<Widget> _views;
   bool _navEnabled = true;
+  final ValueNotifier<bool> _dashboardActive = ValueNotifier(true);
 
   final GlobalKey _menuButtonKey = GlobalKey();
 
@@ -317,6 +318,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       // DashboardScreen(refreshTrigger: dreamEntryRefreshTrigger), // index 0
       DashboardScreen(
         refreshTrigger: dreamEntryRefreshTrigger,
+        tabActiveNotifier: _dashboardActive,
         onAnalyzingChange: (bool analyzing) {
           setState(() {
             _navEnabled = !analyzing;
@@ -382,6 +384,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     // Force a refresh of subscription data to ensure buttons are up-to-date
     subscriptionModel.refresh();
     
+    _dashboardActive.value = (index == 0);
     setState(() {
       _selectedIndex = index;
     });

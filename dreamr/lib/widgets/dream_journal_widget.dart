@@ -921,10 +921,10 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                     decoration: BoxDecoration(
                       color: AppColors.dreamCardBackground,                // Card background color
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.dreamCardBorder, width: .5),
+                      border: Border.all(color: toneIndicatorColor(dream.tone).withValues(alpha: 0.5), width: .7),
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.dreamCardShadow,
+                          color: toneIndicatorColor(dream.tone).withValues(alpha: 0.55),
                           blurRadius: 7,
                           offset: const Offset(0, 2),
                         ),

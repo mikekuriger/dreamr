@@ -9,6 +9,7 @@ import 'package:dreamr/constants.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/services/notification_service.dart';
+import 'package:dreamr/services/prefetch_service.dart';
 
 
 class SplashScreen extends StatefulWidget {
@@ -55,7 +56,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 
                 // Initialize subscription state before navigating
                 await _initializeSubscription();
-                
+                PrefetchService.warmUp();
+
                 if (!mounted) return;
                 await navigateToPostLoginDestination(context);
                 return;
@@ -76,6 +78,7 @@ class _SplashScreenState extends State<SplashScreen> {
           
           // Initialize subscription state before navigating
           await _initializeSubscription();
+          PrefetchService.warmUp();
 
           // schedule notifications on successful login
           await _rescheduleNotifications();
