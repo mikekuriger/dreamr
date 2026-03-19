@@ -871,7 +871,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                 enabled: !isExpanded,
                 startActionPane: ActionPane(
                   motion: const DrawerMotion(),
-                  extentRatio: 0.25,
+                  extentRatio: 0.3,
                   children: [
                     SlidableAction(
                       onPressed: (_) => _hideDream(dream),
@@ -888,7 +888,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                 ),
                 endActionPane: ActionPane(
                   motion: const DrawerMotion(),
-                  extentRatio: 0.25,
+                  extentRatio: 0.3,
                   children: [
                     SlidableAction(
                       onPressed: (_) => _deleteDream(dream),
