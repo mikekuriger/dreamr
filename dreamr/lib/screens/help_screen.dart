@@ -84,10 +84,13 @@ class HelpScreen extends StatelessWidget {
               content: 'To analyze a dream:\n\n'
                 '• Tap the "Add Dream" button in the navigation bar\n'
                 '• Describe your dream in detail (characters, settings, emotions, events)\n'
-                '• Use the microphone button to record your dream vocally\n'
+                // '• Use the microphone button to record your dream vocally\n'
                 '• Choose your preferred dream interpreter personality\n'
                 '• Tap "Analyze my dream" to get your personalized interpretation\n'
-                '• Wait while the AI generates an image based on your dream\n\n'
+                '• Wait while the AI generates an image based on your dream\n'
+                '• Chat with the AI to explore your dream further\n'
+                '• Add personal notes about your dream\n'
+                '• Share your dream with others\n\n'
                 'Free users have limited dream analyses per week. Upgrade to Pro for unlimited analyses.',
             ),
             
@@ -96,7 +99,8 @@ class HelpScreen extends StatelessWidget {
               title: 'Dream Interpreters',
               icon: Icons.person,
               content: 'Choose from different AI personalities to analyze your dreams:\n\n'
-                '• Access through the "Interpreters" tab in the navigation bar\n'
+                '• Tap the "Interpreter" icon on the dream entry screen\n'
+                '• You can also access interpreters from the hamburger menu\n'
                 '• Each interpreter brings a unique perspective and style\n'
                 '• Browse by categories like Grounded, Supportive, Analytical, etc.\n'
                 '• Free users can access basic interpreters\n'
@@ -112,7 +116,12 @@ class HelpScreen extends StatelessWidget {
                 '• Access it through the "Journal" tab in the navigation bar\n'
                 '• View your dreams chronologically\n'
                 '• Tap on any entry to see the full analysis and image\n'
-                '• Swipe down to refresh your journal with new entries',
+                '• Swipe down to refresh your journal with new entries\n\n'
+                'Managing journal entries:\n\n'
+                '• Swipe left on any entry to reveal a Delete option\n'
+                '• Swipe right on any entry to reveal a Hide option\n'
+                '• Hidden dreams are removed from your journal but not deleted\n'
+                '• Recover hidden dreams anytime via the hamburger menu → Hidden Dreams',
             ),
             
             // Dream Gallery Section
@@ -131,12 +140,12 @@ class HelpScreen extends StatelessWidget {
               icon: Icons.palette_rounded,
               content: 'Customize the visual look of your dream images:\n\n'
                 '• Open the hamburger menu → Image Styles\n'
-                '• Choose Dreamr✨ decides to let the AI match a style to each dream’s tone\n'
+                '• Select "Dreamr ✨ Decides" to let the AI match a style to your dream\'s vibe\n'
                 '• Or pick a fixed preset to keep all future dream images visually consistent\n'
                 '• Browse styles grouped by vibe (Peaceful, Epic, Nightmarish, etc.)\n'
                 '• Preview example thumbnails before selecting (cached on-device for speed)\n'
-                '• Tap the selected style again to clear it and go back to AI selection\n'
-                '• Your choice is saved automatically and used for newly generated images',
+                '• Tap the selected style again to clear it and return to automatic AI selection\n'
+                '• Your choice is saved automatically and applied to all newly generated images',
             ),
             
             // Life Events Section
@@ -146,7 +155,7 @@ class HelpScreen extends StatelessWidget {
               content: 'Track important life events that might influence your dreams:\n\n'
                 '• Access through the hamburger menu → Life Events\n'
                 '• Add significant events like travel, stress, medication, etc.\n'
-                '• These events will be considered in your dream analyses\n'
+                '• These events will be considered in your dream analyses if relevant\n'
                 '• Helps identify patterns in your dream content',
             ),
             
@@ -158,6 +167,7 @@ class HelpScreen extends StatelessWidget {
                 '• View and edit your profile information\n'
                 '• Manage your subscription\n'
                 '• Enable or disable features\n'
+                '• Change the text size\n'
                 '• Update your password\n'
                 '• Log out of your account\n'
                 '• Delete your account',
@@ -168,9 +178,10 @@ class HelpScreen extends StatelessWidget {
               title: 'Credits & Subscriptions',
               icon: Icons.stars,
               content: 'Understanding your dream credits:\n\n'
+                '• Free users get 3 dream images\n'
                 '• Free users get 2 dream analyses per week\n'
-                '• Pro subscribers get unlimited dream analyses\n'
-                '• Pro subscribers also unlock additional dream interpreter personalities\n'
+                '• Pro subscribers get unlimited dream analyses with images\n'
+                '• Pro subscribers also unlock additional dream interpreter personalities and image styles\n'
                 '• Upgrade through the hamburger menu → Subscription\n',
             ),
             
