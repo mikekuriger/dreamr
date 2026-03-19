@@ -2,6 +2,7 @@
 // import 'package:dreamr/services/api_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:dreamr/services/dio_client.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:dreamr/screens/dashboard_screen.dart';
@@ -319,6 +320,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       DashboardScreen(
         refreshTrigger: dreamEntryRefreshTrigger,
         tabActiveNotifier: _dashboardActive,
+        offlineNotifier: isOfflineNotifier,
         onAnalyzingChange: (bool analyzing) {
           setState(() {
             _navEnabled = !analyzing;
@@ -339,6 +341,12 @@ class _MainScaffoldState extends State<MainScaffold> {
         },
       ),
     ];
+  }
+
+  @override
+  void dispose() {
+    _dashboardActive.dispose();
+    super.dispose();
   }
 
   void _onBottomNavTapped(int index) {
@@ -407,10 +415,37 @@ class _MainScaffoldState extends State<MainScaffold> {
           ),
         ],
       ),
-      // body: widget.body,
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _views,
+      body: Column(
+        children: [
+          ValueListenableBuilder<bool>(
+            valueListenable: isOfflineNotifier,
+            builder: (_, offline, _) {
+              if (!offline) return const SizedBox.shrink();
+              return Container(
+                width: double.infinity,
+                color: Colors.red.shade800,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.wifi_off, color: Colors.white, size: 14),
+                    SizedBox(width: 6),
+                    Text(
+                      'No internet connection',
+                      style: TextStyle(color: Colors.white, fontSize: 13),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: _views,
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: (_selectedIndex == 4 || !_navEnabled)
     ? null // hide nav on profile page OR when analyzing

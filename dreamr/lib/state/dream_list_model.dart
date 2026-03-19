@@ -31,8 +31,8 @@ class DreamListModel extends ChangeNotifier {
     _loading = true; notifyListeners();
     try {
       await repo.syncFromServer(includeHidden: includeHidden, prefetchImages: true);
-      // await repo.syncFromServer(includeHidden: includeHidden, prefetchImages: false);
-
+    } catch (_) {
+      // Offline or server error — local data already loaded, nothing more to do
     } finally {
       _loading = false; notifyListeners();
     }

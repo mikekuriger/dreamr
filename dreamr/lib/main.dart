@@ -38,6 +38,7 @@ void main() async {
         Provider<DreamRepository>(create: (_) => DreamRepository()),
         ChangeNotifierProvider<DreamListModel>(
           // includeHidden: true if you want hidden entries in the list model
+          lazy: false,
           create: (ctx) => DreamListModel(repo: ctx.read<DreamRepository>())..init(),
         ),
         ChangeNotifierProvider<SubscriptionModel>(

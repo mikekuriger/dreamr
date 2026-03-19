@@ -136,20 +136,29 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
       _quotaError = null;
     });
 
+    // Read cached subscription status first so stats show correctly offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getBool('sub_is_active');
+      if (cached != null && mounted) {
+        setState(() => _isPro = cached);
+      }
+    } catch (_) {}
+
     try {
       final status = await ApiService.getSubscriptionStatus();
 
       setState(() {
         _isPro = status.isActive;
-        _textRemainingWeek = status.textRemainingWeek;            // null for paid
-        _imageRemainingLifetime = status.imageRemainingLifetime;  // null for paid
-        _nextReset = status.nextReset;                            // null for paid
+        _textRemainingWeek = status.textRemainingWeek;
+        _imageRemainingLifetime = status.imageRemainingLifetime;
+        _nextReset = status.nextReset;
         _quotaLoading = false;
       });
     } catch (e) {
       setState(() {
         _quotaLoading = false;
-        _quotaError = 'Failed to load quota';
+        // Keep _isPro from cache; only clear loading flag
       });
     }
   }

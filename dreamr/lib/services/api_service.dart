@@ -164,23 +164,16 @@ class ApiService {
 
   // Get user's subscription status
   static Future<SubscriptionStatus> getSubscriptionStatus() async {
-    try {
-      final res = await DioClient.dio.get('/api/subscription/status',
-        // options: Options(validateStatus: (status) => status == 200),
-      );
-      debugPrint('SUB API status=${res.statusCode} url=${res.realUri}');
-      debugPrint('SUB API headers auth=${res.requestOptions.headers['Authorization']}');
-      debugPrint('SUB API body=${res.data}');
+    final res = await DioClient.dio.get('/api/subscription/status',
+      // options: Options(validateStatus: (status) => status == 200),
+    );
+    debugPrint('SUB API status=${res.statusCode} url=${res.realUri}');
+    debugPrint('SUB API body=${res.data}');
 
-      final Map<String, dynamic> body =
-        res.data is Map<String, dynamic> ? res.data as Map<String, dynamic> : {};
+    final Map<String, dynamic> body =
+      res.data is Map<String, dynamic> ? res.data as Map<String, dynamic> : {};
 
-      // return SubscriptionStatus.fromJson(res.data);
-      return SubscriptionStatus.fromJson(body);
-    } catch (e) {
-      // If there's an error, return a default free tier status
-      return SubscriptionStatus.free();
-    }
+    return SubscriptionStatus.fromJson(body);
   }
 
   // Get available subscription plans

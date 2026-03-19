@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:dreamr/data/dream_dao.dart';
 
 // import 'package:provider/provider.dart';
 // import 'package:dreamr/models/interpreter.dart'; // adjust path to your actual model file
@@ -262,13 +263,26 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
   bool? _isPro;
 
   Future<void> _loadProStatus() async {
+    // Load cached status first so it's available immediately offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getBool('sub_is_active');
+      debugPrint('💳 Journal cached sub_is_active=$cached');
+      if (cached != null && mounted) setState(() => _isPro = cached);
+    } catch (e) {
+      debugPrint('❌ Journal sub cache error: $e');
+    }
+
+    // Then try to get live status from server
     try {
       final status = await ApiService.getSubscriptionStatus();
       if (!mounted) return;
       setState(() => _isPro = status.isActive);
+      // Update cache with fresh value
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sub_is_active', status.isActive);
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _isPro = false);
+      // Offline — keep cached value already set above
     }
   }
 
@@ -452,20 +466,37 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
       );
     }
   
-// Load dreams from API
+// Load dreams: show local cache immediately, then refresh from network
   Future<void> _loadDreams() async {
+    // 1. Show local data right away so the screen is never blank
+    try {
+      final local = await DreamDao().getAll();
+      debugPrint('📚 Journal DAO returned ${local.length} dreams');
+      if (!mounted) return;
+      if (local.isNotEmpty) {
+        setState(() { _dreams = local; _loading = false; });
+        widget.onDreamsLoaded?.call();
+      }
+    } catch (e) {
+      debugPrint('❌ Journal DAO error: $e');
+    }
+
+    // 2. Fetch fresh data from network and update
     try {
       final dreams = await ApiService.fetchDreams();
-      setState(() {
-        _dreams = dreams;
-        _loading = false;
-      });
+      debugPrint('🌐 Journal API returned ${dreams.length} dreams');
+      if (!mounted) return;
+      setState(() { _dreams = dreams; _loading = false; });
       widget.onDreamsLoaded?.call();
-    } catch (e) {
-      // print("❌ Failed to fetch dreams: $e");
-      setState(() {
-        _loading = false;
+      // Save to local DAO so the journal is available offline
+      DreamDao().upsertMany(dreams).catchError((e) {
+        debugPrint('⚠️ Journal DAO upsert error: $e');
+        return null;
       });
+    } catch (e) {
+      debugPrint('⚠️ Journal API error (offline?): $e');
+      // Offline — already showing local data; just make sure spinner is gone
+      if (mounted) setState(() => _loading = false);
     }
   }
 

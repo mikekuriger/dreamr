@@ -105,4 +105,9 @@ class DreamDao {
     );
     return rows.map(_fromMap).toList();
   }
+
+  Future<void> deleteAll() async {
+    final db = await _open();
+    await db.delete('dreams');
+  }
 }

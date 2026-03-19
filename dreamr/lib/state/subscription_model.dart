@@ -4,6 +4,7 @@ import 'package:dreamr/models/subscription.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/services/purchase_service.dart';
 // import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// ChangeNotifier for managing subscription state throughout the app
 class SubscriptionModel extends ChangeNotifier {
@@ -43,32 +44,69 @@ class SubscriptionModel extends ChangeNotifier {
     await refresh();
   }
 
+  static const _kPrefIsActive = 'sub_is_active';
+  static const _kPrefTier = 'sub_tier';
+  static const _kPrefTextWeek = 'sub_text_week';
+
+  Future<void> _saveToCache(SubscriptionStatus s) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kPrefIsActive, s.isActive);
+    await prefs.setString(_kPrefTier, s.tier);
+    await prefs.setInt(_kPrefTextWeek, s.textRemainingWeek ?? 0);
+    debugPrint('💾 Subscription cached: isActive=${s.isActive} tier=${s.tier}');
+  }
+
+  Future<SubscriptionStatus?> _loadFromCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(_kPrefIsActive)) return null;
+    return SubscriptionStatus(
+      isActive: prefs.getBool(_kPrefIsActive) ?? false,
+      tier: prefs.getString(_kPrefTier) ?? 'free',
+      textRemainingWeek: prefs.getInt(_kPrefTextWeek),
+      autoRenew: false,
+      expiryDate: null,
+      imageRemainingLifetime: null,
+      nextReset: null,
+    );
+  }
+
   /// Refresh subscription data from the server
   Future<void> refresh() async {
     if (_loading) return;
-    
+
+    // Load cached status immediately so UI is never empty while waiting
+    if (_status == null) {
+      final cached = await _loadFromCache();
+      if (cached != null) {
+        _status = cached;
+        notifyListeners();
+      }
+    }
+
     _loading = true;
     _error = null;
     notifyListeners();
-    
+
     try {
       // Load subscription status and plans in parallel
       final results = await Future.wait([
         ApiService.getSubscriptionStatus(),
         ApiService.getSubscriptionPlans(),
       ]);
-      
+
       _status = results[0] as SubscriptionStatus;
       debugPrint('SUB: isActive=${_status?.isActive} tier=${_status?.tier} textWeek=${_status?.textRemainingWeek}');
+      await _saveToCache(_status!);
 
       _plans = results[1] as List<SubscriptionPlan>;
-      
+
       // Also refresh store products
       if (_purchaseService.isAvailable) {
         await _purchaseService.loadProducts();
       }
     } catch (e) {
-      _error = 'Failed to load subscription data: $e';
+      // Offline — keep cached status, just log the error
+      debugPrint('ℹ️ Subscription refresh failed (offline?): $e');
     } finally {
       _loading = false;
       notifyListeners();

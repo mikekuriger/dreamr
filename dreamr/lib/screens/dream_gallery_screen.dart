@@ -6,6 +6,7 @@ import 'package:dreamr/screens/image_viewer_screen.dart';
 import 'package:dreamr/constants.dart';
 import 'package:dreamr/widgets/dream_image.dart';
 import 'package:dreamr/services/image_store.dart';
+import 'package:dreamr/data/dream_dao.dart';
 
 
 
@@ -52,16 +53,35 @@ class _DreamGalleryScreenState extends State<DreamGalleryScreen> {
   }
   
   Future<void> _loadDreams() async {
-    setState(() {
-      _loading = true;
-    });
+    setState(() => _loading = true);
 
-    final dreams = await ApiService.fetchGallery();
+    // 1. Show local data right away so the screen is never blank
+    try {
+      final local = await DreamDao().getAll();
+      final withImages = local.where((d) => d.imageFile != null && d.imageFile!.isNotEmpty).toList();
+      debugPrint('🖼️ Gallery DAO: ${local.length} total, ${withImages.length} with images');
+      if (mounted && withImages.isNotEmpty) {
+        setState(() { _dreams = withImages; _loading = false; });
+      }
+    } catch (e) {
+      debugPrint('❌ Gallery DAO error: $e');
+    }
 
-    setState(() {
-      _dreams = dreams;
-      _loading = false;
-    });
+    // 2. Fetch fresh data from network and update
+    try {
+      final dreams = await ApiService.fetchGallery();
+      debugPrint('🌐 Gallery API returned ${dreams.length} dreams');
+      if (mounted) setState(() { _dreams = dreams; _loading = false; });
+      // Save to local DAO so gallery is available offline
+      DreamDao().upsertMany(dreams).catchError((e) {
+        debugPrint('⚠️ Gallery DAO upsert error: $e');
+        return null;
+      });
+    } catch (e) {
+      debugPrint('⚠️ Gallery API error (offline?): $e');
+      // Offline — already showing local data; just make sure spinner is gone
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

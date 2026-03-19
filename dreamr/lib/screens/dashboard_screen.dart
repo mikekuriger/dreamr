@@ -1,4 +1,5 @@
 // screens/dashboard_screen.dart
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -31,12 +32,14 @@ import 'package:flutter_sound/flutter_sound.dart';
 class DashboardScreen extends StatefulWidget {
   final ValueNotifier<int> refreshTrigger;
   final ValueNotifier<bool>? tabActiveNotifier;
+  final ValueNotifier<bool>? offlineNotifier;
   final ValueChanged<bool>? onAnalyzingChange;
 
   const DashboardScreen({
     super.key,
     required this.refreshTrigger,
     this.tabActiveNotifier,
+    this.offlineNotifier,
     this.onAnalyzingChange,
   });
 
@@ -179,10 +182,16 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   int? _textRemainingWeek; // track # of free dreams left
   bool? _isPro;
-  
+  bool _isOffline = false;
+
+  void _onOfflineChanged() {
+    if (mounted) setState(() => _isOffline = widget.offlineNotifier?.value ?? false);
+  }
+
   @override
   void initState() {
     super.initState();
+    _isOffline = widget.offlineNotifier?.value ?? false;
     _loadUserName();
     _loadDraftText();
     _initSpeechApi();
@@ -210,6 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     widget.refreshTrigger.addListener(_refreshFromTrigger);
     widget.tabActiveNotifier?.addListener(_onTabActiveChanged);
+    widget.offlineNotifier?.addListener(_onOfflineChanged);
   }
   
   @override
@@ -238,6 +248,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _micCtl?.close();
     widget.refreshTrigger.removeListener(_refreshFromTrigger);
     widget.tabActiveNotifier?.removeListener(_onTabActiveChanged);
+    widget.offlineNotifier?.removeListener(_onOfflineChanged);
     dreamrRouteObserver.unsubscribe(this);
     _stopRecording();
     _micAnim.dispose();
@@ -252,17 +263,27 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   // Load user's subscription quota
   Future<void> _loadQuota() async {
-  try {
-    final status = await ApiService.getSubscriptionStatus();
-    if (!mounted) return;
-    setState(() {
-      _isPro = status.isActive;
-      _textRemainingWeek = status.textRemainingWeek;
-    });
-  } catch (_) {
-    // optional: ignore or snackbar
+    // 1. Read cached value immediately so UI is correct offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getBool('sub_is_active');
+      if (cached != null && mounted) setState(() => _isPro = cached);
+    } catch (_) {}
+
+    // 2. Fetch live status; throws on network failure so cache is kept
+    try {
+      final status = await ApiService.getSubscriptionStatus();
+      if (!mounted) return;
+      setState(() {
+        _isPro = status.isActive;
+        _textRemainingWeek = status.textRemainingWeek;
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('sub_is_active', status.isActive);
+    } catch (_) {
+      // Offline — cached value already set above
+    }
   }
-}
   
   // Initialize speech recognition with Google Cloud Speech API
   Future<void> _initSpeechApi() async {
@@ -373,16 +394,36 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadUserName() async {
+    // 1. Read cached name immediately so greeting is available offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('user_first_name');
+      if (cached != null && cached.isNotEmpty && mounted) {
+        setState(() => _userName = cached);
+      }
+    } catch (_) {}
+
+    // 2. Fetch live profile
     try {
       final authData = await ApiService.checkAuth();
       if (authData['authenticated'] == true) {
-        setState(() {
-          _userName = authData['first_name'];
-          _enableAudio = authData['enable_audio'] == true || authData['enable_audio'] == '1';
-        });
-        _playIntroAudioOnce();
+        final firstName = authData['first_name']?.toString() ?? '';
+        final enableAudio = authData['enable_audio'] == true || authData['enable_audio'] == '1';
+        if (mounted) {
+          setState(() {
+            _userName = firstName;
+            _enableAudio = enableAudio;
+          });
+          _playIntroAudioOnce();
+        }
+        if (firstName.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('user_first_name', firstName);
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Offline — cached name already set above
+    }
   }
 
   // RouteAware: a new screen was pushed on top (interpreter, settings, etc.)
@@ -469,34 +510,53 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadInitialSelectedInterpreter() async {
+    // 1. Restore cached interpreter immediately so button shows offline
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('selected_interpreter_json');
+      if (cached != null && mounted) {
+        final interpreter = Interpreter.fromJson(
+          Map<String, dynamic>.from(
+            (cached.isNotEmpty) ? (jsonDecode(cached) as Map) : {},
+          ),
+        );
+        final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
+        interpreterModel.setSelectedInterpreter(interpreter);
+      }
+    } catch (e) {
+      debugPrint('ℹ️ Could not restore cached interpreter: $e');
+    }
+
+    // 2. Fetch live list and update
     try {
       final interpreters = await ApiService.fetchInterpreters();
       final selectedInterpreter = await InterpreterHelper.getSelectedInterpreter(interpreters);
-      
+
       Interpreter? interpreterToSet = selectedInterpreter;
-      
+
       // If no interpreter is selected, set default to Dreamr ✨ (id: 26)
-      // DEFAULT_INTERPRETER_ID: 26 - Dreamr ✨
       if (interpreterToSet == null) {
-        const int defaultInterpreterId = 26; // Dreamr ✨
+        const int defaultInterpreterId = 26;
         interpreterToSet = interpreters.cast<Interpreter?>().firstWhere(
           (interpreter) => interpreter?.id == defaultInterpreterId,
           orElse: () => interpreters.isNotEmpty ? interpreters.first : null,
         );
-        
-        // Save the default selection
+
         if (interpreterToSet != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('selected_interpreter_id', interpreterToSet.id);
         }
       }
-      
+
       if (interpreterToSet != null && mounted) {
         final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
         interpreterModel.setSelectedInterpreter(interpreterToSet);
+        // Cache the full interpreter object for offline use
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('selected_interpreter_json', jsonEncode(interpreterToSet.toJson()));
       }
     } catch (e) {
-      debugPrint('Failed to load initial selected interpreter: $e');
+      debugPrint('ℹ️ Could not load interpreter from server (offline?): $e');
     }
   }
 
@@ -1261,10 +1321,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                     Expanded(
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          // backgroundColor: AppColors.purple600,
-                          backgroundColor: isOutOfCredits ? Colors.orange.shade700 : AppColors.purple600,
+                          backgroundColor: _isOffline
+                              ? Colors.grey.shade700
+                              : isOutOfCredits ? Colors.orange.shade700 : AppColors.purple600,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: AppColors.purple600.withValues(alpha: 0.5),
+                          disabledBackgroundColor: _isOffline
+                              ? Colors.grey.shade700
+                              : AppColors.purple600.withValues(alpha: 0.5),
                           disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -1273,8 +1336,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                           overlayColor: Colors.white.withValues(alpha: 0.1),
                         ),
-                        // onPressed: (_loading || _imageGenerating) ? null : _submitDream,
-                        onPressed: (_loading || _imageGenerating)
+                        onPressed: (_isOffline || _loading || _imageGenerating)
                           ? null
                           : (canAnalyze
                               ? _submitDream
@@ -1293,12 +1355,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             if (_loading || _imageGenerating)
                               const SizedBox(width: 8),
+                            if (_isOffline)
+                              const Icon(Icons.wifi_off, size: 18),
+                            if (_isOffline)
+                              const SizedBox(width: 6),
                             Text(
-                              _imageGenerating
-                                  ? "Generating Image"
-                                  : _loading
-                                      ? "Analyzing..."
-                                      : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
+                              _isOffline
+                                  ? "No Connection"
+                                  : _imageGenerating
+                                      ? "Generating Image"
+                                      : _loading
+                                          ? "Analyzing..."
+                                          : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
                             ),
                           ],
                         ),

@@ -1,6 +1,7 @@
 // screens/splash_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dreamr/services/api_service.dart';
 // import 'package:dreamr/widgets/main_scaffold.dart';
 import 'package:dreamr/screens/welcome_screen.dart';
@@ -35,29 +36,33 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _attemptAutoLogin() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final wasLoggedIn = prefs.getBool('loggedIn') ?? false;
       final loginMethod = await _storage.read(key: 'login_method');
 
+      if (wasLoggedIn && loginMethod != null) {
+        // We have a prior session — navigate immediately without blocking on network.
+        // The persisted session cookie handles auth; re-validate silently in background.
+        if (!mounted) return;
+        await navigateToPostLoginDestination(context);
+        _backgroundRefresh(loginMethod); // fire-and-forget
+        return;
+      }
+
+      // No prior session — need a live login before we can proceed.
       if (loginMethod == 'google') {
         final token = await _storage.read(key: 'google_token');
         if (token != null) {
           try {
-            // Try to sign in silently with Google
             final googleUser = await _googleSignIn.signInSilently();
             if (googleUser != null) {
               final googleAuth = await googleUser.authentication;
               final idToken = googleAuth.idToken;
-              
               if (idToken != null) {
-                // Authenticate with backend
                 await ApiService.googleLogin(idToken);
-                
-                // Update stored token
                 await _storage.write(key: 'google_token', value: idToken);
-                
-                // Initialize subscription state before navigating
                 await _initializeSubscription();
                 PrefetchService.warmUp();
-
                 if (!mounted) return;
                 await navigateToPostLoginDestination(context);
                 return;
@@ -65,7 +70,6 @@ class _SplashScreenState extends State<SplashScreen> {
             }
           } catch (e) {
             debugPrint('❌ Google auto-login failed: $e');
-            // Fall through to next login method
           }
         }
       }
@@ -75,19 +79,14 @@ class _SplashScreenState extends State<SplashScreen> {
       if (email != null && password != null) {
         try {
           await ApiService.login(email, password);
-          
-          // Initialize subscription state before navigating
           await _initializeSubscription();
           PrefetchService.warmUp();
-
-          // schedule notifications on successful login
           await _rescheduleNotifications();
-          
           if (!mounted) return;
           await navigateToPostLoginDestination(context);
           return;
         } catch (e) {
-          // Login failed, fall through to login screen
+          // Login failed — fall through to login screen
         }
       }
 
@@ -95,12 +94,54 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/login');
       }
     } catch (e) {
-      // 🔥 this catches BAD_DECRYPT or any other secure storage read failure
       debugPrint('❌ Secure storage error: $e');
-      await _storage.deleteAll(); // wipe corrupted entries
+      await _storage.deleteAll();
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
       }
+    }
+  }
+
+  /// Re-validates the server session and syncs data in the background.
+  /// Called after navigating to the app when a prior session exists.
+  /// Each step is isolated so a network failure in one doesn't block the others.
+  Future<void> _backgroundRefresh(String loginMethod) async {
+    // Step 1: try to re-validate the session (best-effort, offline failure is fine)
+    try {
+      if (loginMethod == 'google') {
+        final googleUser = await _googleSignIn.signInSilently();
+        if (googleUser != null) {
+          final googleAuth = await googleUser.authentication;
+          if (googleAuth.idToken != null) {
+            await ApiService.googleLogin(googleAuth.idToken!);
+            await _storage.write(key: 'google_token', value: googleAuth.idToken);
+          }
+        }
+      } else if (loginMethod == 'password') {
+        final email = await _storage.read(key: 'email');
+        final password = await _storage.read(key: 'password');
+        if (email != null && password != null) {
+          await ApiService.login(email, password);
+        }
+      }
+      // facebook/apple: persisted session cookie handles auth — no action needed
+    } catch (e) {
+      debugPrint('ℹ️ Session re-validation failed (offline?): $e');
+    }
+
+    // Step 2: refresh subscription — always runs, falls back to cache if offline
+    try {
+      await _initializeSubscription();
+    } catch (e) {
+      debugPrint('ℹ️ Subscription refresh failed: $e');
+    }
+
+    // Step 3: prefetch images and reschedule notifications
+    try {
+      PrefetchService.warmUp();
+      await _rescheduleNotifications();
+    } catch (e) {
+      debugPrint('ℹ️ Prefetch/notifications failed: $e');
     }
   }
 

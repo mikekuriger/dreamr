@@ -3,8 +3,34 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:cookie_jar/cookie_jar.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:dreamr/constants.dart';
+
+/// Global offline state driven by Dio request outcomes.
+/// true = last request failed with a connection error; false = online.
+final ValueNotifier<bool> isOfflineNotifier = ValueNotifier(false);
+
+class _ConnectivityInterceptor extends Interceptor {
+  @override
+  void onResponse(Response response, ResponseInterceptorHandler handler) {
+    isOfflineNotifier.value = false;
+    handler.next(response);
+  }
+
+  @override
+  void onError(DioException err, ErrorInterceptorHandler handler) {
+    if (err.type == DioExceptionType.connectionError ||
+        err.type == DioExceptionType.connectionTimeout ||
+        err.error is SocketException) {
+      isOfflineNotifier.value = true;
+    } else {
+      // Server responded (4xx/5xx) — we are online
+      isOfflineNotifier.value = false;
+    }
+    handler.next(err);
+  }
+}
 
 class DioClient {
   static late final Dio dio;
@@ -34,6 +60,7 @@ class DioClient {
     ));
 
     dio.interceptors.add(CookieManager(_cookieJar!));
+    dio.interceptors.add(_ConnectivityInterceptor());
   }
 
   // Added so logout can actually clear the session
