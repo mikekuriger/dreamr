@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:dreamr/theme/colors.dart';
+import 'package:dreamr/state/subscription_model.dart';
 
 /// A screen for selecting the style preset used by dream image generation.
 ///
@@ -82,6 +84,14 @@ class _ImageStyleSelectionScreenState extends State<ImageStyleSelectionScreen> {
 
   String? _selectedStyleId;
   bool _loading = true;
+  bool _isPro = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final sub = Provider.of<SubscriptionModel>(context, listen: false);
+    setState(() => _isPro = sub.status.isActive);
+  }
 
   @override
   void dispose() {
@@ -379,6 +389,7 @@ class _ImageStyleSelectionScreenState extends State<ImageStyleSelectionScreen> {
                     tone: tone,
                     selectedStyleId: _selectedStyleId,
                     onSelect: _selectStyle,
+                    isPro: _isPro,
                   );
                 }),
                 ],
@@ -580,12 +591,14 @@ class _DreamToneSection extends StatefulWidget {
   final DreamToneSectionData tone;
   final String? selectedStyleId;
   final ValueChanged<ImageStyleOption> onSelect;
+  final bool isPro;
 
   const _DreamToneSection({
     super.key,
     required this.tone,
     required this.selectedStyleId,
     required this.onSelect,
+    required this.isPro,
   });
 
   @override
@@ -676,7 +689,10 @@ class _DreamToneSectionState extends State<_DreamToneSection> {
                   toneAccent: tone.accent,
                   style: style,
                   selected: widget.selectedStyleId == style.id,
-                  onTap: () => widget.onSelect(style),
+                  locked: !widget.isPro,
+                  onTap: widget.isPro
+                      ? () => widget.onSelect(style)
+                      : () => Navigator.pushNamed(context, '/subscription'),
                 ),
               ),
           ],
@@ -690,6 +706,7 @@ class _ImageStyleCard extends StatelessWidget {
   final Color toneAccent;
   final ImageStyleOption style;
   final bool selected;
+  final bool locked;
   final VoidCallback onTap;
 
   const _ImageStyleCard({
@@ -697,6 +714,7 @@ class _ImageStyleCard extends StatelessWidget {
     required this.style,
     required this.selected,
     required this.onTap,
+    this.locked = false,
   });
 
   @override
@@ -705,7 +723,9 @@ class _ImageStyleCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
+      child: Opacity(
+        opacity: locked ? 0.65 : 1.0,
+        child: Stack(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
@@ -783,9 +803,38 @@ class _ImageStyleCard extends StatelessWidget {
                   size: 16,
                 ),
               ),
+            )
+          else if (locked)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star, color: Colors.white, size: 10),
+                    SizedBox(width: 3),
+                    Text(
+                      'PRO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
-      ),
+        ),  // Stack
+      ),    // Opacity
     );
   }
 }

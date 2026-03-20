@@ -425,15 +425,25 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
   }
 
   Widget _buildInterpreterCard(Interpreter interpreter, bool isSelected) {
-    // Get category color - handle null category gracefully
     final category = _categories.firstWhere(
       (cat) => cat.name == interpreter.category,
-      orElse: () => _categories.first, // Default to first category if not found
+      orElse: () => _categories.first,
     );
 
+    final bool isProInterpreter = interpreter.accessTier != 'free';
+    final bool locked = isProInterpreter && !_isPro;
+
     return GestureDetector(
-      onTap: () => _selectInterpreter(interpreter.id),
-      child: Stack(
+      onTap: () {
+        if (locked) {
+          Navigator.pushNamed(context, '/subscription');
+        } else {
+          _selectInterpreter(interpreter.id);
+        }
+      },
+      child: Opacity(
+        opacity: locked ? 0.65 : 1.0,
+        child: Stack(
         children: [
           Container(
             margin: const EdgeInsets.all(8), // Add margin to allow shadow to extend beyond bounds
@@ -584,7 +594,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
               ],
             ),
           ),
-          // Selection indicator - positioned absolutely
+          // Top-right badge: checkmark if selected, PRO lock if locked
           if (isSelected)
             Positioned(
               top: 16,
@@ -601,9 +611,38 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
                   size: 16,
                 ),
               ),
+            )
+          else if (locked)
+            Positioned(
+              top: 14,
+              right: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star, color: Colors.white, size: 10),
+                    SizedBox(width: 3),
+                    Text(
+                      'PRO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
         ],
-      ),
+        ),  // Stack
+      ),    // Opacity
     );
   }
 }
