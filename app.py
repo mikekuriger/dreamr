@@ -1063,7 +1063,8 @@ class Interpreter(db.Model):
 
     # icon metadata
     icon_key = db.Column(db.String(64), nullable=False, default="")
-    icon_file = db.Column(db.String(128), nullable=True)       # e.g. "abc123.png"
+    icon_file = db.Column(db.String(128), nullable=True)            # e.g. "abc123.png"
+    animated_icon_file = db.Column(db.String(128), nullable=True)   # e.g. "abc123.mp4"
     # icon_tile_file = db.Column(db.String(128), nullable=True)  # e.g. "abc123.png"
     icon_prompt = db.Column(db.Text, nullable=True)
 
@@ -3791,6 +3792,7 @@ def get_interpreters():
 
             # "icon_key": i.icon_key,
             "icon": f"/static/images/interpreters/{i.icon_file}" if i.icon_file else None,
+            "animated_icon": f"/static/images/interpreters/{i.animated_icon_file}" if i.animated_icon_file else None,
             "tile": f"/static/images/interpreters_tiles/{i.icon_file}" if i.icon_file else None,
         }
         for i in interps
