@@ -73,7 +73,26 @@ dreamr/lib/screens/login_screen_bak.dart
 chef
 test_account.txt
 class Recipe.docx
-back_end/*
+dreamr/back_end/*
 dreamr/b.deb
 facebook.help
-logs
+dreamr/logs
+dreamr/b
+dreamr/b.ios
+dreamr/b.release
+dreamr/bd
+dreamr/docs/
+dreamr/google_client_ID
+dreamr/google_client_ID-release
+dreamr/imac.sh
+dreamr/ios/flutter-bin-cache.tgz
+dreamr/ios/flutter_tools_dart_tool.tgz
+dreamr/ios/pub-cache-hosted.tgz
+dreamr/junk
+dreamr/key.txt
+dreamr/lib/screens/image_style_selection_screen copy.dart
+dreamr/lib/widgets/main_scaffold.dart.bak
+dreamr/macos/
+dreamr/pubget_verbose.txt
+dreamr/pubget_verbose2.txt
+dreamr/todo
