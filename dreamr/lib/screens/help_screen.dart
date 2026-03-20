@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 
 class HelpScreen extends StatelessWidget {
@@ -206,13 +207,21 @@ class HelpScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'Dreamr ✨ v1.0.13+18\n© 2025 Michael Kuriger',          // version number
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color.fromARGB(200, 122, 209, 255),
-                        fontSize: 12,
-                      ),
+                    FutureBuilder<PackageInfo>(
+                      future: PackageInfo.fromPlatform(),
+                      builder: (context, snap) {
+                        final version = snap.hasData
+                            ? 'v${snap.data!.version}+${snap.data!.buildNumber}'
+                            : '';
+                        return Text(
+                          'Dreamr ✨ $version\n© 2025 Michael Kuriger',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color.fromARGB(200, 122, 209, 255),
+                            fontSize: 12,
+                          ),
+                        );
+                      },
                     ),
 
                     const SizedBox(height: 0),              // space between version and EULA
