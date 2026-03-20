@@ -3765,10 +3765,8 @@ def get_interpreters():
 
     q = Interpreter.query.filter(Interpreter.is_enabled.is_(True))
 
-    # Free users only see access_tier="free"
-    if not is_pro:
-        q = q.filter(Interpreter.access_tier == "free")
-
+    # All users see all interpreters; access_tier is included in the response
+    # so the client can display a PRO badge and block selection for free users.
     interps = q.order_by(Interpreter.sort_order.asc(), Interpreter.name.asc()).all()
 
     return jsonify([
