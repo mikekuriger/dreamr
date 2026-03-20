@@ -8,6 +8,7 @@ class Interpreter {
   final List<String> cardBullets;
   final List<String> toneExamples;
   final String iconFile;
+  final String? animatedIconFile;
   final String category;
   final int sortOrder;
 
@@ -20,6 +21,7 @@ class Interpreter {
     required this.cardBullets,
     required this.toneExamples,
     required this.iconFile,
+    this.animatedIconFile,
     required this.category,
     required this.sortOrder,
   });
@@ -34,6 +36,7 @@ class Interpreter {
       cardBullets: List<String>.from(json['card_bullets'] ?? []),
       toneExamples: List<String>.from(json['tone_examples'] ?? []),
       iconFile: json['icon'] as String? ?? '',
+      animatedIconFile: json['animated_icon'] as String?,
       category: json['category'] as String? ?? 'supportive',
       sortOrder: json['sort_order'] as int? ?? 0,
     );
@@ -49,6 +52,7 @@ class Interpreter {
       'card_bullets': cardBullets,
       'tone_examples': toneExamples,
       'icon': iconFile,
+      'animated_icon': animatedIconFile,
       'category': category,
       'sort_order': sortOrder,
     };

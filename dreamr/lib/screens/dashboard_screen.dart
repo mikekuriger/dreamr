@@ -8,6 +8,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dreamr/widgets/interpreter_icon_widget.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/constants.dart';
 import 'package:dreamr/theme/colors.dart';
@@ -1290,25 +1291,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(11),
-                            child: CachedNetworkImage(
-                              imageUrl: 'https://dreamr-us-west-01.zentha.me${_selectedInterpreter!.iconFile}',
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                color: AppColors.purple950,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF82D9FF),
-                                  size: 24,
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.purple950,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF82D9FF),
-                                  size: 24,
-                                ),
-                              ),
+                            child: InterpreterIconWidget(
+                              url: 'https://dreamr-us-west-01.zentha.me'
+                                  '${_selectedInterpreter!.animatedIconFile ?? _selectedInterpreter!.iconFile}',
                             ),
                           ),
                         ),
@@ -1682,3 +1667,4 @@ class _DownArrowPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DownArrowPainter oldDelegate) => false;
 }
+

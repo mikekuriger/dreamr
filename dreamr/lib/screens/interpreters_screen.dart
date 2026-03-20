@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dreamr/models/interpreter.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/theme/colors.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dreamr/widgets/interpreter_icon_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/state/selected_interpreter_model.dart';
@@ -483,27 +483,12 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(11),
-                    child: CachedNetworkImage(
-                      imageUrl: interpreter.iconFile.isNotEmpty 
-                        ? 'https://dreamr-us-west-01.zentha.me${interpreter.iconFile}'
-                        : '',
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: AppColors.purple950,
-                        child: const Icon(
-                          Icons.person,
-                          color: Color(0xFF82D9FF),
-                          size: 40,
-                        ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        color: AppColors.purple950,
-                        child: const Icon(
-                          Icons.person,
-                          color: Color(0xFF82D9FF),
-                          size: 40,
-                        ),
-                      ),
+                    child: InterpreterIconWidget(
+                      url: interpreter.iconFile.isNotEmpty
+                          ? 'https://dreamr-us-west-01.zentha.me'
+                              '${interpreter.animatedIconFile ?? interpreter.iconFile}'
+                          : '',
+                      iconSize: 40,
                     ),
                   ),
                 ),

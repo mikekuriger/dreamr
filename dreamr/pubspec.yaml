@@ -59,8 +59,8 @@ dependencies:
   just_audio: ^0.9.36
   audio_session: ^0.1.16
   cached_network_image: ^3.3.1
-# Video playback for welcome tour
-  # video_player: ^2.9.2
+# Video playback for welcome tour and animated interpreter icons
+  video_player: ^2.9.2
 # Cache
   flutter_cache_manager: ^3.3.1
 # Sharing images to social media
