@@ -4058,6 +4058,9 @@ def admin_users_list():
     q = (request.args.get("q") or "").strip()
     sort = request.args.get("sort", "-signup")
 
+    last_dream_subq = (db.session.query(Dream.user_id, func.max(Dream.created_at).label("last_dream"))
+                       .group_by(Dream.user_id).subquery())
+
     qry = User.query
     if q:
         like = f"%{q}%"
@@ -4065,9 +4068,21 @@ def admin_users_list():
 
     if sort == "email":
         qry = qry.order_by(User.email.asc())
+    elif sort == "-email":
+        qry = qry.order_by(User.email.desc())
     elif sort == "name":
         qry = qry.order_by(User.first_name.asc(), User.email.asc())
-    else:
+    elif sort == "last_dream":
+        qry = (qry.outerjoin(last_dream_subq, User.id == last_dream_subq.c.user_id)
+                  .order_by(last_dream_subq.c.last_dream.is_(None).asc(),
+                            last_dream_subq.c.last_dream.desc()))
+    elif sort == "-last_dream":
+        qry = (qry.outerjoin(last_dream_subq, User.id == last_dream_subq.c.user_id)
+                  .order_by(last_dream_subq.c.last_dream.is_(None).desc(),
+                            last_dream_subq.c.last_dream.asc()))
+    elif sort == "id":
+        qry = qry.order_by(User.id.asc())
+    else:  # -signup (default)
         qry = qry.order_by(User.signup_date.is_(None), User.signup_date.desc())
 
     rows = qry.limit(per_page + 1).offset((page - 1) * per_page).all()
@@ -4083,9 +4098,7 @@ def admin_users_list():
         .all()
     }
     credits_map = {c.user_id: c for c in UserCredits.query.filter(UserCredits.user_id.in_([u.id for u in users])).all()}
-    
-    last_dream_subq = (db.session.query(Dream.user_id, func.max(Dream.created_at).label("last_dream"))
-                       .group_by(Dream.user_id).subquery())
+
     last_dreams = {
         d.user_id: d.last_dream for d in db.session.query(last_dream_subq).all()
     }
@@ -4094,20 +4107,29 @@ def admin_users_list():
     <h2>Users</h2>
     <form method="get" style="margin:16px 0">
       <input name="q" value="{{ q or '' }}" placeholder="search email or name" style="width:300px;display:inline-block">
-      <select name="sort" style="width:150px;display:inline-block">
-        <option value="-signup" {% if sort=='-signup' %}selected{% endif %}>Newest</option>
-        <option value="email" {% if sort=='email' %}selected{% endif %}>Email</option>
-        <option value="name" {% if sort=='name' %}selected{% endif %}>Name</option>
+      <select name="sort" style="width:160px;display:inline-block">
+        <option value="-signup" {% if sort=='-signup' %}selected{% endif %}>Newest signup</option>
+        <option value="id" {% if sort=='id' %}selected{% endif %}>ID ↑</option>
+        <option value="email" {% if sort=='email' %}selected{% endif %}>Email A→Z</option>
+        <option value="-email" {% if sort=='-email' %}selected{% endif %}>Email Z→A</option>
+        <option value="name" {% if sort=='name' %}selected{% endif %}>Name A→Z</option>
+        <option value="last_dream" {% if sort=='last_dream' %}selected{% endif %}>Last Dream ↓</option>
+        <option value="-last_dream" {% if sort=='-last_dream' %}selected{% endif %}>Last Dream ↑</option>
       </select>
       <button type="submit">Search</button>
     </form>
+    {% macro sort_link(label, key) %}
+      {% set toggle = '-' + key if sort == key else key %}
+      {% set arrow = ' ↓' if sort == key else (' ↑' if sort == '-' + key else '') %}
+      <a href="?sort={{ toggle }}&q={{ q }}&per_page={{ per_page }}" style="color:inherit;text-decoration:none;white-space:nowrap">{{ label }}{{ arrow }}</a>
+    {% endmacro %}
     <table style="table-layout:auto">
       <tr>
-        <th style="width:60px">ID</th>
-        <th style="width:200px">Email</th>
+        <th style="width:60px">{{ sort_link('ID', 'id') }}</th>
+        <th style="width:200px">{{ sort_link('Email', 'email') }}</th>
         <th style="width:150px">Name</th>
         <th style="width:110px">Signup</th>
-        <th style="width:110px">Last Dream</th>
+        <th style="width:110px">{{ sort_link('Last Dream', 'last_dream') }}</th>
         <th style="width:120px">Plan</th>
         <th style="width:80px">Status</th>
         <th style="width:80px">Text/wk</th>
