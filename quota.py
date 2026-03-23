@@ -1,6 +1,6 @@
 # quota.py
 from __future__ import annotations  # postpone annotation evaluation
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -8,8 +8,8 @@ from sqlalchemy import select, update, and_, text as sqltext
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 PT = ZoneInfo("America/Los_Angeles")
-WEEKLY_TEXT_QUOTA = 3                   # temp for testing
-FREE_IMAGE_QUOTA  = 3                   # temp for testing
+WEEKLY_FREE_QUOTA = 2       # free credits bumped to this each Sunday
+IMAGE_CREDIT_COST = 4       # credits deducted per image generation
 
 if TYPE_CHECKING:
     # For editors only; never runs at runtime
@@ -30,6 +30,9 @@ def _models():
     from app import db, UserCredits
     return db, UserCredits
 
+def _total_credits(uc) -> int:
+    return (uc.free_credits or 0) + (uc.purchased_credits or 0)
+
 def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
     db, UserCredits = _models()
 
@@ -44,9 +47,8 @@ def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
             anchor = _pt_week_anchor(datetime.utcnow())
             uc = UserCredits(
                 user_id=user_id,
-                text_remaining_week=WEEKLY_TEXT_QUOTA,
-                image_remaining_lifetime=FREE_IMAGE_QUOTA,
-                # image_remaining_lifetime=3,
+                free_credits=WEEKLY_FREE_QUOTA,
+                purchased_credits=0,
                 week_anchor_utc=anchor,
             )
             db.session.add(uc)
@@ -59,7 +61,6 @@ def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
             uc = UserCredits.query.get(user_id)
             if uc:
                 return uc
-            # If still nothing, something else is wrong
             raise
 
         except OperationalError as e:
@@ -68,26 +69,9 @@ def get_or_create_credits(user_id: int, max_retries: int = 3) -> "UserCredits":
             orig = getattr(e, "orig", None)
             code = orig.args[0] if (orig and getattr(orig, "args", None)) else None
             if code == 1213 and attempt < max_retries - 1:
-                # Retry the loop
                 continue
             raise
 
-
-# def get_or_create_credits(user_id: int) -> "UserCredits":
-#     db, UserCredits = _models()
-#     uc = UserCredits.query.get(user_id)
-#     if uc:
-#         return uc
-#     anchor = _pt_week_anchor(datetime.utcnow())
-#     uc = UserCredits(
-#         user_id=user_id,
-#         text_remaining_week=WEEKLY_TEXT_QUOTA,
-#         image_remaining_lifetime=3,
-#         week_anchor_utc=anchor
-#     )
-#     db.session.add(uc)
-#     db.session.commit()
-#     return uc
 
 def ensure_week_current(user_id: int) -> "UserCredits":
     db, UserCredits = _models()
@@ -106,44 +90,62 @@ def ensure_week_current(user_id: int) -> "UserCredits":
 
     if cur_anchor > (uc.week_anchor_utc or cur_anchor):
         uc.week_anchor_utc = cur_anchor
-        uc.text_remaining_week = WEEKLY_TEXT_QUOTA
+        # Bump free credits to weekly quota only if below it — never touch purchased_credits
+        if uc.free_credits < WEEKLY_FREE_QUOTA:
+            uc.free_credits = WEEKLY_FREE_QUOTA
         db.session.commit()
     return uc
 
+
 def decrement_text_or_deny(user_id: int) -> tuple[bool, str | None]:
+    """Deduct 1 credit for a dream analysis. Free credits consumed first."""
     db, UserCredits = _models()
     uc = ensure_week_current(user_id)
-    if uc.text_remaining_week <= 0:
+    if _total_credits(uc) <= 0:
         return False, _next_reset_iso(uc.week_anchor_utc)
-    uc.text_remaining_week -= 1
+    if uc.free_credits > 0:
+        uc.free_credits -= 1
+    else:
+        uc.purchased_credits -= 1
     db.session.commit()
     return True, None
 
+
 def refund_text(user_id: int) -> None:
+    """Refund 1 credit on analysis failure. Refunds to free_credits."""
     db, UserCredits = _models()
     uc = UserCredits.query.get(user_id)
     if uc:
-        uc.text_remaining_week += 1
+        uc.free_credits += 1
         db.session.commit()
 
+
 def decrement_image_or_deny(user_id: int) -> bool:
+    """Deduct IMAGE_CREDIT_COST credits for image generation. Free credits consumed first."""
     db, UserCredits = _models()
     uc = get_or_create_credits(user_id)
-    if uc.image_remaining_lifetime <= 0:
+    if _total_credits(uc) < IMAGE_CREDIT_COST:
         return False
-    uc.image_remaining_lifetime -= 1
+    remaining = IMAGE_CREDIT_COST
+    free_use = min(uc.free_credits, remaining)
+    uc.free_credits -= free_use
+    remaining -= free_use
+    if remaining > 0:
+        uc.purchased_credits -= remaining
     db.session.commit()
     return True
 
+
 def refund_image(user_id: int) -> None:
+    """Refund IMAGE_CREDIT_COST credits on image generation failure."""
     db, UserCredits = _models()
     uc = UserCredits.query.get(user_id)
     if uc:
-        uc.image_remaining_lifetime += 1
+        uc.purchased_credits += IMAGE_CREDIT_COST
         db.session.commit()
+
 
 def next_reset_iso(user_id: int) -> str:
     db, UserCredits = _models()
     uc = get_or_create_credits(user_id)
     return _next_reset_iso(uc.week_anchor_utc)
-

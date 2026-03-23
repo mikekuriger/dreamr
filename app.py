@@ -23,6 +23,7 @@ from prompts import CATEGORY_PROMPTS, TONE_TO_STYLE
 from quota import ensure_week_current, next_reset_iso, get_or_create_credits
 from quota import decrement_text_or_deny, refund_text
 from quota import decrement_image_or_deny, refund_image
+from quota import IMAGE_CREDIT_COST
 from sqlalchemy import desc
 from sqlalchemy import func
 from sqlalchemy import or_
@@ -450,8 +451,8 @@ class UserCredits(db.Model):
     __tablename__ = "user_credits"
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
-    text_remaining_week = db.Column(db.Integer, nullable=False, default=3)                # free text
-    image_remaining_lifetime = db.Column(db.Integer, nullable=False, default=0)            # free image
+    free_credits = db.Column(db.Integer, nullable=False, default=2)        # weekly free quota (bumped to 2 each Sunday)
+    purchased_credits = db.Column(db.Integer, nullable=False, default=0)   # one-time IAP credits, never expire
     week_anchor_utc = db.Column(db.DateTime, nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -459,6 +460,19 @@ class UserCredits(db.Model):
         server_onupdate=text("CURRENT_TIMESTAMP"),
         nullable=False,
     )
+
+
+class CreditPack(db.Model):
+    """One-time purchasable credit packs shown on the subscription screen."""
+    __tablename__ = "credit_packs"
+
+    id          = db.Column(db.String(32), primary_key=True)   # e.g. "credits_small"
+    name        = db.Column(db.String(64), nullable=False)     # e.g. "Small Pack"
+    credits     = db.Column(db.Integer, nullable=False)        # credits granted on purchase
+    price_usd   = db.Column(db.Numeric(8, 2), nullable=False)  # display price
+    product_id  = db.Column(db.String(128), nullable=True)     # App Store / Play Store product ID
+    sort_order  = db.Column(db.Integer, nullable=False, default=0)
+    is_enabled  = db.Column(db.Boolean, nullable=False, default=True)
 
     user = db.relationship("User", backref=db.backref("credits", uselist=False))
 
@@ -487,8 +501,8 @@ class SubscriptionService:
                 'is_active': False,
                 'auto_renew': False,
                 'payment_method': None,
-                'text_remaining_week': uc.text_remaining_week,
-                'image_remaining_lifetime': uc.image_remaining_lifetime,
+                'free_credits': uc.free_credits,
+                'purchased_credits': uc.purchased_credits,
                 'next_reset_iso': next_reset_iso(user_id)
             }
         
@@ -1098,7 +1112,7 @@ def _can_generate_image(user_id: int) -> bool:
     # Check if free user with remaining image credits
     try:
         credits = get_or_create_credits(user_id)
-        return credits.image_remaining_lifetime > 0
+        return (credits.free_credits + credits.purchased_credits) >= IMAGE_CREDIT_COST
     except Exception:
         return False
 
@@ -3588,14 +3602,61 @@ def get_subscription_status():
         
         uc = ensure_week_current(current_user.id)
         status.update({
-            "text_remaining_week": uc.text_remaining_week,
-            "image_remaining_lifetime": uc.image_remaining_lifetime,
+            "free_credits": uc.free_credits,
+            "purchased_credits": uc.purchased_credits,
             "next_reset_iso": next_reset_iso(current_user.id),
         })
         return jsonify(status)
     except Exception as e:
         logger.error(f"Error fetching subscription status: {e}", exc_info=True)
         return jsonify({"error": "Failed to fetch subscription status"}), 500
+
+@app.get("/api/credits/packs")
+@login_required
+def get_credit_packs():
+    """Return enabled credit packs for display on the subscription/credits screen."""
+    packs = CreditPack.query.filter_by(is_enabled=True).order_by(CreditPack.sort_order).all()
+    return jsonify([{
+        "id":         p.id,
+        "name":       p.name,
+        "credits":    p.credits,
+        "price_usd":  float(p.price_usd),
+        "product_id": p.product_id,
+    } for p in packs])
+
+
+@app.post("/api/credits/purchase")
+@login_required
+def purchase_credits():
+    """
+    Called by the app after a successful consumable IAP.
+    Body: { "pack_id": "credits_small", "receipt": "<store receipt>" }
+    For now receipt validation is a stub — add real validation before going live.
+    """
+    data = request.get_json(silent=True) or {}
+    pack_id = (data.get("pack_id") or "").strip()
+    if not pack_id:
+        return jsonify({"error": "pack_id required"}), 400
+
+    pack = CreditPack.query.filter_by(id=pack_id, is_enabled=True).first()
+    if not pack:
+        return jsonify({"error": "Unknown or disabled credit pack"}), 404
+
+    # TODO: validate IAP receipt with Apple / Google before granting credits
+    # For now, trust the client (acceptable during testing; lock down before launch)
+
+    uc = get_or_create_credits(current_user.id)
+    uc.purchased_credits += pack.credits
+    db.session.commit()
+
+    logger.info("Credits purchased: user=%s pack=%s credits=%d", current_user.id, pack_id, pack.credits)
+    return jsonify({
+        "ok": True,
+        "credits_added": pack.credits,
+        "free_credits": uc.free_credits,
+        "purchased_credits": uc.purchased_credits,
+    })
+
 
 @app.route("/api/subscription/plans", methods=["GET"])
 @login_required
@@ -3951,6 +4012,7 @@ ADMIN_SHELL = """<!doctype html><meta charset="utf-8">
       <h1>Dreamr Admin</h1>
       <a href="/admin/">Dashboard</a>
       <a href="/admin/users">Users</a>
+      <a href="/admin/credit-packs">Credit Packs</a>
       <a href="/admin/logout" onclick="event.preventDefault();document.getElementById('al').submit()" style="margin-left:auto">Logout</a>
     </div>
   </nav>
@@ -4006,6 +4068,65 @@ def admin_login_submit():
 def admin_logout():
     logout_user()
     return redirect("/admin/login")
+
+
+# ----- Credit Packs admin -----
+@app.get("/admin/credit-packs")
+@admin_required
+def admin_credit_packs():
+    packs = CreditPack.query.order_by(CreditPack.sort_order).all()
+    BODY = """
+    <h2>Credit Packs</h2>
+    <p style="color:#6c757d">These packs are shown on the subscription screen. Set the product_id once you create the IAP products in App Store Connect / Google Play Console.</p>
+    <form method="post" action="/admin/credit-packs/seed" style="margin:12px 0">
+      <button type="submit">Seed default packs (safe to run multiple times)</button>
+    </form>
+    <table>
+      <tr><th>ID</th><th>Name</th><th>Credits</th><th>Price</th><th>Product ID</th><th>Sort</th><th>Enabled</th><th></th></tr>
+      {% for p in packs %}
+      <tr>
+        <td>{{ p.id }}</td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.credits }}</td>
+        <td>${{ '%.2f'|format(p.price_usd) }}</td>
+        <td>{{ p.product_id or '—' }}</td>
+        <td>{{ p.sort_order }}</td>
+        <td>{{ 'Yes' if p.is_enabled else 'No' }}</td>
+        <td>
+          <form method="post" action="/admin/credit-packs/{{ p.id }}/toggle" class="inline">
+            <button type="submit">{{ 'Disable' if p.is_enabled else 'Enable' }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    """
+    return _render_admin(BODY, "Credit Packs", packs=packs)
+
+
+@app.post("/admin/credit-packs/seed")
+@admin_required
+def admin_seed_credit_packs():
+    defaults = [
+        {"id": "credits_small",  "name": "Small Pack",  "credits": 15,  "price_usd": 0.99, "sort_order": 1},
+        {"id": "credits_medium", "name": "Medium Pack", "credits": 90,  "price_usd": 4.99, "sort_order": 2},
+        {"id": "credits_large",  "name": "Large Pack",  "credits": 200, "price_usd": 9.99, "sort_order": 3},
+    ]
+    for d in defaults:
+        existing = CreditPack.query.get(d["id"])
+        if not existing:
+            db.session.add(CreditPack(**d))
+    db.session.commit()
+    return redirect("/admin/credit-packs")
+
+
+@app.post("/admin/credit-packs/<string:pack_id>/toggle")
+@admin_required
+def admin_toggle_credit_pack(pack_id: str):
+    pack = CreditPack.query.get_or_404(pack_id)
+    pack.is_enabled = not pack.is_enabled
+    db.session.commit()
+    return redirect("/admin/credit-packs")
 
 
 # ----- Admin pages -----
@@ -4147,8 +4268,8 @@ def admin_users_list():
           <td>{{ ld.strftime('%Y-%m-%d') if ld else '—' }}</td>
           <td>{{ s.plan_id if s else '' }}</td>
           <td>{{ s.status if s else '' }}</td>
-          <td>{{ c.text_remaining_week if c else 0 }}</td>
-          <td>{{ c.image_remaining_lifetime if c else 0 }}</td>
+          <td>{{ c.free_credits if c else 0 }}</td>
+          <td>{{ c.purchased_credits if c else 0 }}</td>
         </tr>
       {% endfor %}
     </table>
@@ -4209,12 +4330,12 @@ def admin_user_detail(user_id: int):
     <div class="section">
       <h3>Credits</h3>
       <form method="post" action="/admin/users/{{ u.id }}/credits" class="grid">
-        <label>Text remaining this week:</label>
-        <input type="number" name="text_remaining_week" value="{{ credits.text_remaining_week if credits else 0 }}" min="0">
-        
-        <label>Images remaining lifetime:</label>
-        <input type="number" name="image_remaining_lifetime" value="{{ credits.image_remaining_lifetime if credits else 0 }}" min="0">
-        
+        <label>Free credits (weekly):</label>
+        <input type="number" name="free_credits" value="{{ credits.free_credits if credits else 0 }}" min="0">
+
+        <label>Purchased credits:</label>
+        <input type="number" name="purchased_credits" value="{{ credits.purchased_credits if credits else 0 }}" min="0">
+
         <div></div>
         <button type="submit">Update credits</button>
       </form>
@@ -4416,19 +4537,19 @@ def _admin_redirect(user_id: int, msg: str = ""):
 def admin_update_credits(user_id: int):
     u = User.query.get_or_404(user_id)
     try:
-        tw = int(request.form.get("text_remaining_week", "0"))
-        iw = int(request.form.get("image_remaining_lifetime", "0"))
-        if tw < 0 or iw < 0:
+        fc = int(request.form.get("free_credits", "0"))
+        pc = int(request.form.get("purchased_credits", "0"))
+        if fc < 0 or pc < 0:
             return _admin_redirect(user_id, "Credits must be >= 0")
         uc = UserCredits.query.get(user_id)
         if not uc:
             now = datetime.utcnow()
             week_anchor = now - timedelta(days=now.weekday())
-            uc = UserCredits(user_id=user_id, week_anchor_utc=week_anchor, text_remaining_week=tw, image_remaining_lifetime=iw)
+            uc = UserCredits(user_id=user_id, week_anchor_utc=week_anchor, free_credits=fc, purchased_credits=pc)
             db.session.add(uc)
         else:
-            uc.text_remaining_week = tw
-            uc.image_remaining_lifetime = iw
+            uc.free_credits = fc
+            uc.purchased_credits = pc
         db.session.commit()
         return _admin_redirect(user_id, "Credits updated")
     except Exception:
