@@ -503,6 +503,9 @@ class SubscriptionService:
                 'payment_method': None,
                 'free_credits': uc.free_credits,
                 'purchased_credits': uc.purchased_credits,
+                # Legacy aliases for older app versions
+                'text_remaining_week': uc.free_credits,
+                'image_remaining_lifetime': uc.purchased_credits,
                 'next_reset_iso': next_reset_iso(user_id)
             }
         
@@ -3604,6 +3607,9 @@ def get_subscription_status():
         status.update({
             "free_credits": uc.free_credits,
             "purchased_credits": uc.purchased_credits,
+            # Legacy aliases for older app versions
+            "text_remaining_week": uc.free_credits,
+            "image_remaining_lifetime": uc.purchased_credits,
             "next_reset_iso": next_reset_iso(current_user.id),
         })
         return jsonify(status)
@@ -3655,6 +3661,9 @@ def purchase_credits():
         "credits_added": pack.credits,
         "free_credits": uc.free_credits,
         "purchased_credits": uc.purchased_credits,
+        # Legacy aliases for older app versions
+        "text_remaining_week": uc.free_credits,
+        "image_remaining_lifetime": uc.purchased_credits,
     })
 
 
