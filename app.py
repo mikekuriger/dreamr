@@ -296,7 +296,7 @@ class Dream(db.Model):
         if notes_text is None:
             self.notes = None
         else:
-            # Optional normalization (keeps user’s spaces):
+            # Optional normalization (keeps user's spaces):
             txt = str(notes_text).replace("\r\n", "\n")
             self.notes = txt
         self.notes_updated_at = datetime.utcnow()
@@ -474,7 +474,31 @@ class CreditPack(db.Model):
     sort_order  = db.Column(db.Integer, nullable=False, default=0)
     is_enabled  = db.Column(db.Boolean, nullable=False, default=True)
 
-    user = db.relationship("User", backref=db.backref("credits", uselist=False))
+def _assign_trial(user):
+    """Assign a 5-day Pro trial to a newly created user. No-ops if trial plan missing or user already has a subscription."""
+    try:
+        if UserSubscription.query.filter_by(user_id=user.id).first():
+            return  # Already has a subscription record — skip
+        plan = SubscriptionPlan.query.get('pro_trial_5day')
+        if not plan:
+            logger.warning("pro_trial_5day plan not found in DB — skipping trial for user %s", user.id)
+            return
+        now = datetime.utcnow()
+        trial = UserSubscription(
+            user_id=user.id,
+            plan_id='pro_trial_5day',
+            status='trial',
+            start_date=now,
+            end_date=now + timedelta(days=5),
+            auto_renew=False,
+        )
+        db.session.add(trial)
+        db.session.commit()
+        logger.info("Assigned 5-day trial to new user %s", user.id)
+    except Exception as e:
+        logger.warning("Failed to assign trial to user %s: %s", user.id, e)
+        db.session.rollback()
+
 
 # --- Subscription Service ---
 class SubscriptionService:
@@ -484,17 +508,19 @@ class SubscriptionService:
     @staticmethod
     def get_user_subscription_status(user_id):
         """Get the current subscription status for a user"""
-        # Find the most recent active subscription
-        subscription = UserSubscription.query.filter_by(
-            user_id=user_id, 
-            status='active'
+        now = datetime.utcnow()
+        # Find the most recent active or unexpired trial subscription
+        subscription = UserSubscription.query.filter(
+            UserSubscription.user_id == user_id,
+            UserSubscription.status.in_(['active', 'trial']),
+            db.or_(UserSubscription.end_date == None, UserSubscription.end_date > now)
         ).order_by(UserSubscription.end_date.desc()).first()
-        
+
         if not subscription:
             # Return default free tier if no active subscription
             from quota import ensure_week_current, next_reset_iso  # safe import here
             uc = ensure_week_current(user_id)
-            
+
             return {
                 'tier': 'free',
                 'expiry_date': None,
@@ -508,14 +534,14 @@ class SubscriptionService:
                 'image_remaining_lifetime': uc.purchased_credits,
                 'next_reset_iso': next_reset_iso(user_id)
             }
-        
+
         # Get the plan details
         plan = subscription.plan
-        
+
         return {
             'tier': plan.id,
             'expiry_date': subscription.end_date.isoformat() if subscription.end_date else None,
-            'is_active': subscription.status == 'active',
+            'is_active': True,
             'auto_renew': subscription.auto_renew,
             'payment_method': subscription.payment_method
         }
@@ -1315,6 +1341,7 @@ def auth_google():
         )
         db.session.add(user)
         db.session.commit()
+        _assign_trial(user)
     elif not user.email_confirmed:
         user.email_confirmed = True
         db.session.commit()
@@ -1388,6 +1415,7 @@ def api_google_login():
                 )
                 db.session.add(user)
                 db.session.commit()
+                _assign_trial(user)
 
         else:
             # Existing normal user: ensure confirmed
@@ -1643,7 +1671,7 @@ def apple_login():
     # 4) If still no user, create new one
     if not user:
         if not email:
-            # Apple didn’t provide an email we can trust; we can’t create an account.
+            # Apple didn't provide an email we can trust; we can't create an account.
             return jsonify({
                 "error": (
                     "Apple did not provide an email address, try clearing your "
@@ -1661,19 +1689,24 @@ def apple_login():
             email_confirmed=True,
         )
         db.session.add(user)
+        is_new_user = True
     else:
         # If we found user by email, make sure apple_user_id is attached
         if apple_user_id and not user.apple_user_id:
             user.apple_user_id = apple_user_id
-        # Make sure they’re marked confirmed
+        # Make sure they're marked confirmed
         if not user.email_confirmed:
             user.email_confirmed = True
+        is_new_user = False
 
     try:
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Account conflict, please contact support"}), 400
+
+    if is_new_user:
+        _assign_trial(user)
 
     # 5) Log the user in
     login_user(user)
@@ -1812,7 +1845,7 @@ def api_request_password_reset():
                 body=(
                     "We received a request to reset your password.\n\n"
                     f"Open this link to set a new password (expires in {RESET_TTL_MINUTES} minutes):\n{link}\n\n"
-                    "If you didn’t request this, ignore this email."
+                    "If you didn't request this, ignore this email."
                 ),
             )
             mail.send(msg)
@@ -1876,6 +1909,7 @@ def confirm_page():
     db.session.add(new_user)
     db.session.delete(pending)
     db.session.commit()
+    _assign_trial(new_user)
 
     return render_template_string(CONFIRM_PAGE_TEMPLATE, status="ok"), 200
 
@@ -2047,6 +2081,7 @@ def confirm_account(token):
     db.session.add(new_user)
     db.session.delete(pending)
     db.session.commit()
+    _assign_trial(new_user)
 
     login_user(new_user, remember=True)
     return jsonify({"message": "Logged in"})
@@ -2781,7 +2816,7 @@ def chat():
             user_analysis = analysis or content
             user_analysis = _strip_trailing_type_block(user_analysis)
         
-            # Keep the row (don’t delete), hide it by default, and save the AI reply.
+            # Keep the row (don't delete), hide it by default, and save the AI reply.
             dream.analysis = user_analysis
             dream.summary  = summary or "Non-dream entry"
             dream.tone     = None
@@ -2813,7 +2848,7 @@ def chat():
                 "analysis": dream.analysis,
                 "tone": dream.tone,
                 "is_question": True,                # <-- give the client a real flag
-                "should_generate_image": False,     # <-- authoritative “don’t start”
+                "should_generate_image": False,     # <-- authoritative “don't start”
             }), 200
         
         # Dream → keep + image
