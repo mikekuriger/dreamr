@@ -1,5 +1,32 @@
 // models/subscription.dart
 
+/// A one-time purchasable credit pack
+class CreditPack {
+  final String id;
+  final String name;
+  final int credits;
+  final double priceUsd;
+  final String? productId; // App Store / Play Store product ID
+
+  const CreditPack({
+    required this.id,
+    required this.name,
+    required this.credits,
+    required this.priceUsd,
+    this.productId,
+  });
+
+  factory CreditPack.fromJson(Map<String, dynamic> json) {
+    return CreditPack(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      credits: (json['credits'] as num?)?.toInt() ?? 0,
+      priceUsd: (json['price_usd'] as num?)?.toDouble() ?? 0.0,
+      productId: json['product_id'] as String?,
+    );
+  }
+}
+
 /// Represents a subscription plan in the app
 class SubscriptionFeatureCard {
   final String key;
@@ -98,21 +125,20 @@ class SubscriptionStatus {
   // final String? paymentMethod;
 
   // Free-only fields. Null for paid.
-  final int? textRemainingWeek;
-  final int? imageRemainingLifetime;
+  final int? freeCredits;
+  final int? purchasedCredits;
   final DateTime? nextReset;
 
+  int get totalCredits => (freeCredits ?? 0) + (purchasedCredits ?? 0);
 
-  // const SubscriptionStatus({
   SubscriptionStatus({
     required this.tier,
     required this.isActive,
     required this.autoRenew,
     required this.expiryDate,
-    required this.textRemainingWeek,
-    required this.imageRemainingLifetime,
+    required this.freeCredits,
+    required this.purchasedCredits,
     required this.nextReset,
-    // this.paymentMethod,
   });
 
   factory SubscriptionStatus.free() => SubscriptionStatus(
@@ -120,8 +146,8 @@ class SubscriptionStatus {
     isActive: false,
     autoRenew: false,
     expiryDate: null,
-    textRemainingWeek: null,
-    imageRemainingLifetime: null,
+    freeCredits: null,
+    purchasedCredits: null,
     nextReset: null,
   );
 
@@ -145,8 +171,8 @@ class SubscriptionStatus {
       isActive: json['is_active'] == true,
       autoRenew: json['auto_renew'] == true,
       expiryDate: _toDateTime(json['expiry_date']),
-      textRemainingWeek: _toInt(json['text_remaining_week']),
-      imageRemainingLifetime: _toInt(json['image_remaining_lifetime']),
+      freeCredits: _toInt(json['free_credits']),
+      purchasedCredits: _toInt(json['purchased_credits']),
       nextReset: _toDateTime(json['next_reset_iso']),
     );
   }

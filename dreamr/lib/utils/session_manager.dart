@@ -5,10 +5,19 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/data/dream_dao.dart';
+import 'package:dreamr/state/subscription_model.dart';
+import 'package:dreamr/state/dream_list_model.dart';
 
 Future<void> performLogout(BuildContext context) async {
+  // Clear in-memory provider state immediately so stale data isn't shown on next login
+  if (context.mounted) {
+    context.read<SubscriptionModel>().reset();
+    context.read<DreamListModel>().reset();
+  }
+
   // kill Google session
   final google = GoogleSignIn(scopes: ['email','profile']);
   try { await google.signOut(); } catch (_) {}

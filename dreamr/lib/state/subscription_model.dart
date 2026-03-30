@@ -52,7 +52,7 @@ class SubscriptionModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kPrefIsActive, s.isActive);
     await prefs.setString(_kPrefTier, s.tier);
-    await prefs.setInt(_kPrefTextWeek, s.textRemainingWeek ?? 0);
+    await prefs.setInt(_kPrefTextWeek, s.freeCredits ?? 0);
     debugPrint('💾 Subscription cached: isActive=${s.isActive} tier=${s.tier}');
   }
 
@@ -62,10 +62,10 @@ class SubscriptionModel extends ChangeNotifier {
     return SubscriptionStatus(
       isActive: prefs.getBool(_kPrefIsActive) ?? false,
       tier: prefs.getString(_kPrefTier) ?? 'free',
-      textRemainingWeek: prefs.getInt(_kPrefTextWeek),
+      freeCredits: prefs.getInt(_kPrefTextWeek),
+      purchasedCredits: null,
       autoRenew: false,
       expiryDate: null,
-      imageRemainingLifetime: null,
       nextReset: null,
     );
   }
@@ -95,8 +95,17 @@ class SubscriptionModel extends ChangeNotifier {
       ]);
 
       _status = results[0] as SubscriptionStatus;
-      debugPrint('SUB: isActive=${_status?.isActive} tier=${_status?.tier} textWeek=${_status?.textRemainingWeek}');
+      debugPrint('SUB: isActive=${_status?.isActive} tier=${_status?.tier} freeCredits=${_status?.freeCredits} purchased=${_status?.purchasedCredits}');
       await _saveToCache(_status!);
+
+      // Free users should not retain pro-locked interpreter/style selections
+      if (!_status!.isActive) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('selected_image_style');
+        await prefs.remove('selected_interpreter_id');
+        await prefs.remove('selected_interpreter_json');
+        debugPrint('SUB: free user — cleared interpreter and image style prefs');
+      }
 
       _plans = results[1] as List<SubscriptionPlan>;
 

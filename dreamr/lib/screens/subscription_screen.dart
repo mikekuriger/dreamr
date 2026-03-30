@@ -1,5 +1,5 @@
 // screens/subscription_screen.dart
-// import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dreamr/models/subscription.dart';
@@ -7,6 +7,8 @@ import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/theme/colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:dreamr/services/api_service.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 class SubscriptionScreen extends StatefulWidget {
   final VoidCallback? onDone;
@@ -20,23 +22,83 @@ class SubscriptionScreen extends StatefulWidget {
 class _SubscriptionScreenState extends State<SubscriptionScreen>
     with WidgetsBindingObserver {
   bool _loading = false;
+  List<CreditPack> _creditPacks = [];
+  StreamSubscription<List<PurchaseDetails>>? _purchaseSubscription;
+  Map<String, ProductDetails> _storeProducts = {};
 
   @override
   void initState() {
     super.initState();
-
-    // Start observing app lifecycle
     WidgetsBinding.instance.addObserver(this);
-
-    // Refresh subscription data when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<SubscriptionModel>().refresh();
+      _initIAP();
     });
+  }
+
+  Future<void> _initIAP() async {
+    final packs = await ApiService.fetchCreditPacks();
+    if (!mounted) return;
+    setState(() => _creditPacks = packs);
+
+    final available = await InAppPurchase.instance.isAvailable();
+    if (!available || !mounted) return;
+
+    final ids = packs
+        .where((p) => p.productId != null && p.productId!.isNotEmpty)
+        .map((p) => p.productId!)
+        .toSet();
+
+    if (ids.isNotEmpty) {
+      final response = await InAppPurchase.instance.queryProductDetails(ids);
+      if (mounted) {
+        setState(() {
+          _storeProducts = {for (final pd in response.productDetails) pd.id: pd};
+        });
+      }
+    }
+
+    _purchaseSubscription = InAppPurchase.instance.purchaseStream.listen(
+      _onPurchaseUpdate,
+      onError: (e) => debugPrint('IAP stream error: $e'),
+    );
+  }
+
+  Future<void> _onPurchaseUpdate(List<PurchaseDetails> purchases) async {
+    for (final purchase in purchases) {
+      if (purchase.status == PurchaseStatus.error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Purchase failed: ${purchase.error?.message ?? "Unknown error"}')),
+          );
+        }
+        await InAppPurchase.instance.completePurchase(purchase);
+        continue;
+      }
+
+      if (purchase.status == PurchaseStatus.purchased ||
+          purchase.status == PurchaseStatus.restored) {
+        try {
+          final pack = _creditPacks.firstWhere((p) => p.productId == purchase.productID);
+          final receipt = purchase.verificationData.serverVerificationData;
+          await ApiService.deliverCreditPurchase(pack.id, receipt);
+          if (mounted) await context.read<SubscriptionModel>().refresh();
+        } catch (e) {
+          debugPrint('Credit delivery failed: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Purchase recorded but credits could not be delivered. Please contact support.')),
+            );
+          }
+        }
+        await InAppPurchase.instance.completePurchase(purchase);
+      }
+    }
   }
 
   @override
   void dispose() {
-    // Stop observing lifecycle
+    _purchaseSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -55,11 +117,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
   }
 
   // Format currency based on price
-  String _formatPrice(double price, String period) {
-    final formatter = NumberFormat.currency(symbol: '\$');
-    return '${formatter.format(price)}/${period.toLowerCase()}';
-  }
-
   // Handle subscription purchase
   Future<void> _subscribe(SubscriptionPlan plan) async {
     debugPrint('SUB UI: subscribe tapped for plan=${plan.id}');
@@ -110,7 +167,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
             ),
             SizedBox(height: 2),
             Text(
-              "Unlock all features with a premium plan",
+              "Unlock all features with a subscription ",
               style: TextStyle(
                 fontSize: 11,
                 fontStyle: FontStyle.italic,
@@ -173,11 +230,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Keep the header/first card as-is
                   _buildCurrentSubscription(model.status),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
 
-                  // Keep restore purchases
                   Center(
                     child: TextButton(
                       onPressed: model.loading
@@ -206,30 +261,38 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                     ),
                   ),
 
-                  const SizedBox(height: 8),
-
-                  if (featureCards.isNotEmpty) ...[
-                    _buildProFeaturesSection(featureCards),
-                    const SizedBox(height: 18),
+                  if (_creditPacks.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _buildCreditPacksSection(model.status),
                   ],
 
-                  // const Text(
-                  //   'Choose your plan',
-                  //   style: TextStyle(
-                  //     color: Colors.white,
-                  //     fontSize: 20,
-                  //     fontWeight: FontWeight.bold,
-                  //   ),
-                  // ),
-                  // const SizedBox(height: 12),
+                  const SizedBox(height: 48),
+                  const Divider(color: Colors.white24, thickness: 1),
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Icon(Icons.workspace_premium, color: Color.fromARGB(255, 203, 130, 255), size: 28),
+                      SizedBox(width: 8),
+                      Text(
+                        'Pro Subscription',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Unlimited dreams, image generation, discussion, and more.',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
 
-                  if (proYearly != null)
-                    _buildPlanOptionCard(proYearly, model.status),
-
-                  if (proMonthly != null)
-                    _buildPlanOptionCard(proMonthly, model.status),
-
-                  if (proYearly == null && proMonthly == null)
+                  if (proYearly != null || proMonthly != null)
+                    _buildSubscriptionRow(proMonthly, proYearly, model.status)
+                  else
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.all(16),
@@ -240,6 +303,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                         ),
                       ),
                     ),
+
+                  if (featureCards.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    _buildProFeaturesSection(featureCards),
+                  ],
                 ],
               ),
             );
@@ -427,123 +495,302 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
     );
   }
 
-  Widget _buildPlanOptionCard(
-      SubscriptionPlan? plan, SubscriptionStatus currentStatus) {
-    if (plan == null) return const SizedBox.shrink();
+  Widget _buildSubscriptionRow(
+      SubscriptionPlan? monthly, SubscriptionPlan? yearly, SubscriptionStatus currentStatus) {
+    // Calculate yearly savings vs paying monthly
+    String yearlyBanner = 'Best Value';
+    if (monthly != null && yearly != null && monthly.price > 0) {
+      final fullYearCost = monthly.price * 12;
+      final savingsPct = ((fullYearCost - yearly.price) / fullYearCost * 100).round();
+      if (savingsPct > 0) yearlyBanner = 'Save $savingsPct%';
+    }
 
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (monthly != null) ...[
+          Expanded(child: SizedBox(height: 176, child: _buildSubscriptionCard(monthly, currentStatus, topLabel: 'Monthly'))),
+        ],
+        if (monthly != null && yearly != null) const SizedBox(width: 8),
+        if (yearly != null) ...[
+          Expanded(child: SizedBox(height: 176, child: _buildSubscriptionCard(yearly, currentStatus, topLabel: yearlyBanner))),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSubscriptionCard(
+      SubscriptionPlan plan, SubscriptionStatus currentStatus, {required String topLabel}) {
     final isCurrentPlan = currentStatus.tier == plan.id && currentStatus.isActive;
     final disableSubscribe = currentStatus.isActive && currentStatus.tier != 'free';
+    final borderColor = isCurrentPlan
+        ? const Color.fromARGB(255, 130, 217, 255)
+        : const Color.fromARGB(255, 203, 130, 255);
+    final periodLabel = plan.period.toLowerCase().contains('year') ? 'per year' : 'per month';
 
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: AppColors.purple950,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCurrentPlan
-              ? const Color.fromARGB(255, 130, 217, 255)
-              : const Color.fromARGB(255, 203, 130, 255),
-          width: 1.5,
-        ),
+        border: Border.all(color: borderColor, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: const Color.fromARGB(255, 130, 217, 255)
-                .withValues(alpha: 0.7),
-            blurRadius: 8,
+            color: borderColor.withValues(alpha: 0.5),
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top banner
           Container(
-            padding: const EdgeInsets.all(16),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 7),
             decoration: BoxDecoration(
-              color: isCurrentPlan ? AppColors.purple850 : AppColors.purple800,
+              color: AppColors.purple800,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(10),
                 topRight: Radius.circular(10),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    plan.name,
+            child: Text(
+                isCurrentPlan ? 'Current Plan' : topLabel,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            // Middle: price
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '\$${plan.price.toStringAsFixed(2)}',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 18,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  _formatPrice(plan.price, plan.period),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  Text(
+                    periodLabel,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  plan.description,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
+            // Bottom: subscribe button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (disableSubscribe || _loading) ? null : () => _subscribe(plan),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurpleAccent,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade700,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(
+                          isCurrentPlan ? 'Active' : 'Subscribe',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: disableSubscribe || _loading
-                        ? null
-                        : () => _subscribe(plan),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurpleAccent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      disabledBackgroundColor: Colors.grey.shade700,
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            isCurrentPlan ? 'Current Plan' : 'Subscribe',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+
+  Widget _buildCreditPacksSection(SubscriptionStatus status) {
+    final totalCredits = status.totalCredits;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(color: Colors.white24, thickness: 1),
+        const SizedBox(height: 16),
+        Row(
+          children: const [
+            Icon(Icons.bolt, color: Colors.amber, size: 28),
+            SizedBox(width: 8),
+            Text(
+              'One-Time Credits',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          // 'For occasional users. Credits allow you to analyze dreams without a subscription. Credits never expire.',
+          'For occasional users. Credits never expire.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '•  1 credit per dream  •  4 credits per image\nYou currently have $totalCredits credit${totalCredits == 1 ? '' : 's'} remaining ',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        if (_creditPacks.isNotEmpty) _buildCreditPackRow(
+          packs: _creditPacks,
+          isPro: status.isActive && status.tier != 'free',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreditPackRow({required List<CreditPack> packs, required bool isPro}) {
+    // Find the highest per-credit cost (the base/no-discount pack)
+    final baseRate = packs.fold(0.0, (prev, p) {
+      final rate = p.priceUsd / p.credits;
+      return rate > prev ? rate : prev;
+    });
+    final midIndex = packs.length ~/ 2;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        for (int i = 0; i < packs.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            flex: i == midIndex ? 5 : 4,
+            child: SizedBox(
+              height: i == midIndex ? 176 : 158,
+              child: _buildCreditPackCard(
+                packs[i],
+                isPro: isPro,
+                baseRate: baseRate,
+                isPopular: i == midIndex,
+              ),
             ),
           ),
         ],
-      ),
+      ],
     );
+  }
+
+  Widget _buildCreditPackCard(CreditPack pack, {bool isPro = false, double baseRate = 0, bool isPopular = false}) {
+    final ratePerCredit = pack.credits > 0 ? pack.priceUsd / pack.credits : 0.0;
+    final isBase = baseRate <= 0 || (ratePerCredit - baseRate).abs() < 0.001;
+    final savingsPct = isBase ? 0 : ((baseRate - ratePerCredit) / baseRate * 100).round();
+    final topLabel = isPopular ? 'Most Popular' : (isBase ? 'Starter' : 'Save $savingsPct%');
+    final price = _storeProducts[pack.productId]?.price ?? '\$${pack.priceUsd.toStringAsFixed(2)}';
+    final borderWidth = isPopular ? 2.5 : 1.5;
+    final borderAlpha = isPopular ? 1.0 : 0.6;
+    final shadowAlpha = isPopular ? 0.5 : 0.3;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.purple950,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFFB300).withValues(alpha: borderAlpha),
+          width: borderWidth,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFFB300).withValues(alpha: shadowAlpha),
+            blurRadius: isPopular ? 14 : 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Top: amber banner with savings label
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFFB300),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(10),
+                topRight: Radius.circular(10),
+              ),
+            ),
+            child: Text(
+                topLabel,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            // Middle: credit count
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '${pack.credits}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Text(
+                    'credits',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            // Bottom: price button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (_loading || isPro) ? null : () => _buyCredits(pack),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFB300),
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    price,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+
+  Future<void> _buyCredits(CreditPack pack) async {
+    final pd = _storeProducts[pack.productId];
+    if (pd == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Product not available. Please try again later.')),
+      );
+      return;
+    }
+    await InAppPurchase.instance.buyConsumable(purchaseParam: PurchaseParam(productDetails: pd));
   }
 
   // Build the current subscription status card

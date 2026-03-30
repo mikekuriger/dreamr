@@ -26,6 +26,12 @@ class DreamListModel extends ChangeNotifier {
     unawaited(refresh()); // kick remote sync
   }
 
+  void reset() {
+    _dreams = [];
+    _loading = false;
+    notifyListeners();
+  }
+
   Future<void> refresh() async {
     if (_loading) return;
     _loading = true; notifyListeners();

@@ -213,6 +213,35 @@ class ApiService {
     }
   }
 
+  // Fetch available credit packs
+  static Future<List<CreditPack>> fetchCreditPacks() async {
+    try {
+      final res = await DioClient.dio.get('/api/credits/packs');
+      if (res.data is! List) return [];
+      return (res.data as List)
+          .whereType<Map<String, dynamic>>()
+          .map((j) => CreditPack.fromJson(j))
+          .toList();
+    } catch (e) {
+      debugPrint('Error fetching credit packs: $e');
+      return [];
+    }
+  }
+
+  // Deliver a completed consumable IAP to the backend and grant credits
+  static Future<bool> deliverCreditPurchase(String packId, String receipt) async {
+    try {
+      final res = await DioClient.dio.post('/api/credits/purchase', data: {
+        'pack_id': packId,
+        'receipt': receipt,
+      });
+      return res.data?['ok'] == true;
+    } catch (e) {
+      debugPrint('Error delivering credit purchase: $e');
+      return false;
+    }
+  }
+
   // Initiate a subscription purchase
   // For app store / play store, we also send provider + receipt to the backend.
   static Future<Map<String, dynamic>> initiateSubscription(

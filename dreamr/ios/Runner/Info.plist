@@ -9,10 +9,16 @@
 		<string>c103daad1d87e0e43a427a27f0128128</string>
 		<key>FacebookDisplayName</key>
 		<string>Dreamr</string>
+		<key>FacebookAdvertiserIDCollectionEnabled</key>
+		<false/>
+		<!-- <key>NSUserTrackingUsageDescription</key>
+		<string>This identifier may be used to show personalized ads and measure ad performance.</string> -->
 		<key>LSApplicationQueriesSchemes</key>
 		<array>
 			<string>fbapi</string>
 			<string>fb-messenger-share-api</string>
+			<string>fbauth2</string>
+			<string>fbshareextension</string>
 		</array>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>This app may access your location if you enable location-based features.</string>

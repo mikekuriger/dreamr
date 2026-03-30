@@ -455,8 +455,8 @@ class NotificationService {
     try {
       final status = await ApiService.getSubscriptionStatus();
       final isPaid = status.tier != 'free';
-      final credits = status.textRemainingWeek;
-      if (isPaid || (credits != null && credits >= 2)) return;
+      final credits = status.totalCredits;
+      if (isPaid || credits >= 2) return;
     } catch (_) {
       return; // If we can't check, don't send
     }

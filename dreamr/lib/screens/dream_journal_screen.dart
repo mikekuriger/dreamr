@@ -31,8 +31,8 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
   String _mostCommonTone = '';
   // int _longestWordCount = 0;
 
-  int? _textRemainingWeek;
-  int? _imageRemainingLifetime;
+  int? _freeCredits;
+  int? _purchasedCredits;
   DateTime? _nextReset;
   bool _quotaLoading = false;
   String? _quotaError;
@@ -150,8 +150,8 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
 
       setState(() {
         _isPro = status.isActive;
-        _textRemainingWeek = status.textRemainingWeek;
-        _imageRemainingLifetime = status.imageRemainingLifetime;
+        _freeCredits = status.freeCredits;
+        _purchasedCredits = status.purchasedCredits;
         _nextReset = status.nextReset;
         _quotaLoading = false;
       });
@@ -636,19 +636,11 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                                       ),
                                     ] else ...[
                                       TextSpan(
-                                        text: "✨ Dream Credits: ",
+                                        text: "✨ Dreamr Credits: ",
                                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.normal),
                                       ),
                                       TextSpan(
-                                        text: "${_textRemainingWeek ?? 0}",
-                                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                                      ),
-                                      TextSpan(
-                                        text: "  🔮 Image Credits: ",
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.normal),
-                                      ),
-                                      TextSpan(
-                                        text: "${_imageRemainingLifetime ?? 0}",
+                                        text: "${(_freeCredits ?? 0) + (_purchasedCredits ?? 0)}",
                                         style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                                       ),
                                     ],

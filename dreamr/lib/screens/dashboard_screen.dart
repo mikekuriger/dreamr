@@ -163,6 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   bool _loading = false;
   bool _imageGenerating = false;
+  bool _readyToGenerateImage = false; // free users: show "Generate Image" on main button
   String? _message;
   String? _dreamImagePath;
   String? _lastDreamText;
@@ -181,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _tipSeenPermanently = false;
   bool _tipHasBeenShown = false;   // true after first successful show
 
-  int? _textRemainingWeek; // track # of free dreams left
+  int? _totalCredits; // track total credits (free + purchased)
   bool? _isPro;
   bool _isOffline = false;
 
@@ -277,7 +278,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!mounted) return;
       setState(() {
         _isPro = status.isActive;
-        _textRemainingWeek = status.textRemainingWeek;
+        _totalCredits = status.totalCredits;
       });
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sub_is_active', status.isActive);
@@ -586,6 +587,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     setState(() {
       _loading = true;
       _imageGenerating = false;
+      _readyToGenerateImage = false;
       _message = null;
       _dreamImagePath = null;
       _lastDreamText = text;
@@ -616,9 +618,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? "\n\nThis dream feels *$tone*."
           : "";
 
+      final willGenerate = shouldGen && _isPro == true;
       setState(() {
         _message = "$analysis$toneLine";
-        _imageGenerating = shouldGen;
+        _imageGenerating = willGenerate;
+        _readyToGenerateImage = shouldGen && _isPro != true;
       });
 
       await prefs.remove('draft_text');
@@ -626,13 +630,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       _loadQuota(); // refresh quota after submission
       _controller.clear();
 
-      if (shouldGen) {
+      if (willGenerate) {
         await _generateDreamImage(dreamId, imageStyle: imageStyle);
       } else {
         if (placeholderUrl != null && placeholderUrl.isNotEmpty) {
           setState(() => _dreamImagePath = placeholderUrl);
         }
-        // ensure spinner is off
         setState(() => _imageGenerating = false);
       }
 
@@ -1160,7 +1163,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     //         ? true                                  // while unknown, don't block the user
     //         : (_isPro! || ((_textRemainingWeek ?? 0) > 0))
     //     );
-    final bool isOutOfCredits = (_isPro == false) && ((_textRemainingWeek ?? 0) <= 0);
+    final bool isOutOfCredits = (_isPro == false) && ((_totalCredits ?? 1) <= 0);
     final bool canAnalyze = !(_loading || _imageGenerating) && !isOutOfCredits;
 
     return SafeArea(
@@ -1323,9 +1326,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                         onPressed: (_isOffline || _loading || _imageGenerating)
                           ? null
-                          : (canAnalyze
-                              ? _submitDream
-                              : () => Navigator.pushNamed(context, '/subscription')),
+                          : _readyToGenerateImage
+                              ? () async {
+                                  if ((_totalCredits ?? 0) < 4) {
+                                    Navigator.pushNamed(context, '/subscription');
+                                    return;
+                                  }
+                                  setState(() {
+                                    _imageGenerating = true;
+                                    _readyToGenerateImage = false;
+                                  });
+                                  final prefs = await SharedPreferences.getInstance();
+                                  final imageStyle = prefs.getString('selected_image_style');
+                                  await _generateDreamImage(_lastDreamId!, imageStyle: imageStyle);
+                                }
+                              : (canAnalyze
+                                  ? _submitDream
+                                  : () => Navigator.pushNamed(context, '/subscription')),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -1351,7 +1368,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       ? "Generating Image"
                                       : _loading
                                           ? "Analyzing..."
-                                          : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
+                                          : _readyToGenerateImage
+                                              ? "Generate Image"
+                                              : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
                             ),
                           ],
                         ),

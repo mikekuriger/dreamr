@@ -176,7 +176,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final result = await FacebookAuth.instance.login(permissions: ['email', 'public_profile']);
+      final result = await FacebookAuth.instance.login(
+        permissions: ['email', 'public_profile'],
+        loginTracking: LoginTracking.enabled,
+      );
 
       if (result.status == LoginStatus.cancelled) {
         setState(() => _loading = false);
@@ -445,25 +448,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 18),
 
-                    // Facebook
-                    SizedBox(
-                      width: 225,
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: _loading ? null : _handleFacebookLogin,
-                        icon: const Icon(Icons.facebook, color: Colors.white),
-                        label: const Text(
-                          'Continue with Facebook',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1877F2),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    // Facebook (Android only — FB classic login is deprecated on iOS)
+                    if (Platform.isAndroid) ...[
+                      SizedBox(
+                        width: 225,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: _loading ? null : _handleFacebookLogin,
+                          icon: const Icon(Icons.facebook, color: Colors.white),
+                          label: const Text(
+                            'Continue with Facebook',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1877F2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
                         ),
                       ),
-                    ),
-
-                    const SizedBox(height: 18),
+                      const SizedBox(height: 18),
+                    ],
 
                     // Apple (iOS only)
                     if (Platform.isIOS) 

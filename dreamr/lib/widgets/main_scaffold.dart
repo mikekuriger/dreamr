@@ -497,16 +497,17 @@ class _MainScaffoldState extends State<MainScaffold> {
     
     // Only enforce out-of-credits state once subscription info is loaded.
     final bool isPro = subscriptionModel.loaded ? subscriptionModel.status.isActive : false;
-    final int? textRemainingWeek =
-        subscriptionModel.loaded ? subscriptionModel.status.textRemainingWeek : null;
+    final int totalCredits = subscriptionModel.loaded
+        ? subscriptionModel.status.totalCredits
+        : 1; // assume credits available until loaded
 
     // Check if this is the New Dream button and user is out of credits
     final bool isOutOfCredits = index == 0 && subscriptionModel.loaded &&
-        !isPro && (textRemainingWeek ?? 0) <= 0;
-    
+        !isPro && totalCredits <= 0;
+
     // For debugging
     if (index == 0) {
-      debugPrint('NEW DREAM BUTTON: isOutOfCredits=$isOutOfCredits, isPro=$isPro, textRemainingWeek=$textRemainingWeek');
+      debugPrint('NEW DREAM BUTTON: isOutOfCredits=$isOutOfCredits, isPro=$isPro, totalCredits=$totalCredits');
     }
     
     if (isOutOfCredits && index == 0) {
