@@ -10,28 +10,27 @@ sys.path.insert(0, str(ROOT))
 from app import app, db, client, generate_resized_image
 from app import Interpreter
 
-OUT_DIR  = ROOT / "static" / "images" / "interpreters"
-TILE_DIR = ROOT / "static" / "images" / "tiles" / "interpreters"
+OUT_DIR  = ROOT / "static" / "images" / "interpreters_hq"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-TILE_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL = "gpt-image-1"
 SIZE  = "1024x1024"
 TILE_SIZE = (256, 256)
 
-STYLE = (
-    "16-bit pixel art icon. Dreamy, soft, muted pastel palette. "
-    "No neon, no harsh contrast. Simple shapes. Friendly cartoon look. "
-    "Centered, square framing. Subtle soft background gradient. "
-    "No text, no logos, not a realistic likeness."
-)
-
 #STYLE = (
-#    "Dreamy, soft, muted pastel palette. "
+#    "16-bit pixel art icon. Dreamy, soft, muted pastel palette. "
 #    "No neon, no harsh contrast. Simple shapes. Friendly cartoon look. "
 #    "Centered, square framing. Subtle soft background gradient. "
 #    "No text, no logos, not a realistic likeness."
 #)
+
+STYLE = (
+    #"High quality life-like illustrtion portrait. Dreamy purple and blue background and color palette. "
+    "16 bit pixel art illustrtion portrait. Dreamy soft color palette. "
+    "No neon, no harsh contrast. "
+    "Centered, square framing. Subtle soft background gradient. "
+    "No text, no logos."
+)
 
 ICON_SUBJECTS = {
   "psychoanalyst": "A classic psychoanalyst character portrait: think Freud, tidy hair, round spectacles, subtle blazer and tie, calm thoughtful expression, soft notebook or clipboard hint.",
@@ -49,8 +48,8 @@ ICON_SUBJECTS = {
   "stoic": "A stoic mentor portrait: steady eyes, minimal expression, simple laurel or column motif, calm strength.",
   "surreal": "A playful surrealist portrait:  Think Mystic / Psychic, quirky hair/hat, abstract shapes floating behind, curious grin, whimsical but kind.",
   "coach": "A protective coach portrait: confident smile, athletic jacket, subtle whistle or shield motif, encouraging and no-nonsense.",
-  "seer": "A symbolic seer portrait: Think Fortune Teller, bright red curly hair, calm mysterious eyes, scarf and crystal-orb silhouette, swirling symbol shapes—mystique without prophecy.",
-  "rogue": "A charming rogue portrait: Think Charming Pirate, playful grin, bandana on head under a pirate hat, long dreadlicks, feathery earrings, mischievous but insightful.",
+  "seer": "A symbolic seer portrait: Think Tara Parker, bright red curly hair, calm mysterious eyes, scarf and crystal-orb silhouette, swirling symbol shapes—mystique without prophecy.",
+  "rogue": "A charming rogue portrait: Think Charming pirate, playful grin, red bandana on head under a pirate hat, long dreadlocks, colorful feathery beaded earrings, mischievous but insightful.",
   "relativist": "A friendly relativist scientist portrait: wild, fluffy white hair, thoughtful eyes, warm mischievous smile. Wears a simple sweater or tweed jacket. Slightly whimsical, intellectual vibe. Chalkboard-style abstract equations and symbols faintly in the background. Not a real person. No text. Soft lighting, painterly illustration style.",
   "inner_guide": "A compassionate inner guide portrait: kind, reassuring woman with soft eyes and a gentle smile, cozy sweater or shawl, warm ambient light, subtle dreamy background gradient, calm and nurturing vibe. Not a real person. No text, no logos. Painterly illustration style.",
     "pattern_seer": "An intuitive pattern seer portrait: Perceptive woman with serene expression, subtle freckles or unique facial detail, simple elegant clothing, faint geometric motifs and flowing symbolic shapes in the background, quiet and insightful mood. Not a real person. No text. Painterly illustration style.",
@@ -112,7 +111,6 @@ def main(force=False, slugs=None, keys=None):
             filename = f"{it.slug}-{h}.png"
 
             out_path  = OUT_DIR / filename
-            tile_path = TILE_DIR / filename
 
             # if not force and it.icon_file and out_path.exists():
             #     print(f"SKIP {it.slug}: already has icon_file={it.icon_file}")
@@ -134,13 +132,12 @@ def main(force=False, slugs=None, keys=None):
             out_path.write_bytes(img_bytes)
 
             # tile
-            generate_resized_image(str(out_path), str(tile_path), size=TILE_SIZE)
 
             # DB update (matches your columns)
-            it.icon_file = filename
-            it.icon_tile_file = filename
-            it.icon_prompt = prompt
-            db.session.commit()
+            #it.icon_file = filename
+            #it.icon_tile_file = filename
+            #it.icon_prompt = prompt
+            #db.session.commit()
 
             print(f"OK   {it.slug}: {filename}")
 
