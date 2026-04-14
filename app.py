@@ -296,7 +296,7 @@ class Dream(db.Model):
         if notes_text is None:
             self.notes = None
         else:
-            # Optional normalization (keeps user's spaces):
+            # Optional normalization (keeps user’s spaces):
             txt = str(notes_text).replace("\r\n", "\n")
             self.notes = txt
         self.notes_updated_at = datetime.utcnow()
@@ -1416,6 +1416,7 @@ def api_google_login():
                 db.session.add(user)
                 db.session.commit()
                 _assign_trial(user)
+                logger.info("✅ Registered new user (Google): %s", email)
 
         else:
             # Existing normal user: ensure confirmed
@@ -1500,6 +1501,8 @@ def api_facebook_login():
                 )
                 db.session.add(user)
                 db.session.commit()
+                _assign_trial(user)
+                logger.info("✅ Registered new user (Facebook): %s", email)
         else:
             if not user.email_confirmed:
                 user.email_confirmed = True
@@ -1671,7 +1674,7 @@ def apple_login():
     # 4) If still no user, create new one
     if not user:
         if not email:
-            # Apple didn't provide an email we can trust; we can't create an account.
+            # Apple didn’t provide an email we can trust; we can’t create an account.
             return jsonify({
                 "error": (
                     "Apple did not provide an email address, try clearing your "
@@ -1694,7 +1697,7 @@ def apple_login():
         # If we found user by email, make sure apple_user_id is attached
         if apple_user_id and not user.apple_user_id:
             user.apple_user_id = apple_user_id
-        # Make sure they're marked confirmed
+        # Make sure they’re marked confirmed
         if not user.email_confirmed:
             user.email_confirmed = True
         is_new_user = False
@@ -1707,6 +1710,7 @@ def apple_login():
 
     if is_new_user:
         _assign_trial(user)
+        logger.info("✅ Registered new user (Apple): %s", email)
 
     # 5) Log the user in
     login_user(user)
@@ -1779,6 +1783,7 @@ def register():
 
     db.session.add(user)
     db.session.flush()  # ensure user.id is populated
+    _assign_trial(user)
 
     # Create a confirmation token, but do not gate access on it
     try:
@@ -1792,7 +1797,7 @@ def register():
         db.session.add(ect)
         db.session.commit()
 
-        logger.info(f"✅ Registered new user: {email}")
+        logger.info(f"✅ Registered new user (manual): {email}")
         send_confirmation_email(email, raw_token)
     except Exception:
         # Do not block registration/log-in if email sending fails
@@ -1845,7 +1850,7 @@ def api_request_password_reset():
                 body=(
                     "We received a request to reset your password.\n\n"
                     f"Open this link to set a new password (expires in {RESET_TTL_MINUTES} minutes):\n{link}\n\n"
-                    "If you didn't request this, ignore this email."
+                    "If you didn’t request this, ignore this email."
                 ),
             )
             mail.send(msg)
@@ -2816,7 +2821,7 @@ def chat():
             user_analysis = analysis or content
             user_analysis = _strip_trailing_type_block(user_analysis)
         
-            # Keep the row (don't delete), hide it by default, and save the AI reply.
+            # Keep the row (don’t delete), hide it by default, and save the AI reply.
             dream.analysis = user_analysis
             dream.summary  = summary or "Non-dream entry"
             dream.tone     = None
@@ -2848,7 +2853,7 @@ def chat():
                 "analysis": dream.analysis,
                 "tone": dream.tone,
                 "is_question": True,                # <-- give the client a real flag
-                "should_generate_image": False,     # <-- authoritative “don't start”
+                "should_generate_image": False,     # <-- authoritative “don’t start”
             }), 200
         
         # Dream → keep + image
@@ -4297,8 +4302,8 @@ def admin_users_list():
         <th style="width:110px">{{ sort_link('Last Dream', 'last_dream') }}</th>
         <th style="width:120px">Plan</th>
         <th style="width:80px">Status</th>
-        <th style="width:80px">Text/wk</th>
-        <th style="width:80px">Images</th>
+        <th style="width:80px">Free Credits</th>
+        <th style="width:80px">Paid Credits</th>
       </tr>
       {% for u in users %}
         {% set s = latest_subs.get(u.id) %}

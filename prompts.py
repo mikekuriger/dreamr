@@ -141,45 +141,45 @@ Now rewrite the dream description into a safe, abstract visual prompt that follo
 # For gpt-image-1.5
 TONE_TO_STYLE = {
     "Peaceful / gentle": [
-        "Soft watercolor illustration, pastel tones, gentle lighting",
-        "Dreamlike oil painting, muted colors, smooth brush strokes",
+        # "Soft watercolor illustration, pastel tones, gentle lighting",
+        # "Dreamlike oil painting, muted colors, smooth brush strokes",
         "Minimalist fantasy illustration, airy composition, warm glow"
     ],
 
     "Romantic / nostalgic": [
-        "Impressionist painting, warm light, nostalgic mood",
-        "Soft-focus oil painting, romantic atmosphere",
+        # "Impressionist painting, warm light, nostalgic mood",
+        # "Soft-focus oil painting, romantic atmosphere",
         "Vintage storybook illustration, faded tones"
     ],
     
     "Elegant / ornate": [
-        "Art Nouveau–inspired illustration, flowing lines",
-        "Ornate oil painting, rich textures, classical elegance",
+        # "Art Nouveau–inspired illustration, flowing lines",
+        # "Ornate oil painting, rich textures, classical elegance",
         "Decorative fantasy illustration, intricate detail"
     ],
     
     "Whimsical / surreal": [
-        "Surreal storybook illustration, imaginative shapes, soft color",
-        "Whimsical children’s book art, dreamy proportions",
+        # "Surreal storybook illustration, imaginative shapes, soft color",
+        # "Whimsical children’s book art, dreamy proportions",
         "Painterly surreal fantasy, floating elements, gentle distortion"
     ],
 
     "Ancient / mythic": [
         "Mythological fantasy illustration, classical composition",
-        "Ancient fresco–inspired painting, earthy tones",
-        "Epic mythic oil painting, timeless atmosphere"
+        # "Ancient fresco–inspired painting, earthy tones",
+        # "Epic mythic oil painting, timeless atmosphere"
     ],
 
     "Epic / heroic": [
         "Cinematic fantasy concept art, dramatic lighting, painterly",
-        "Mythic oil painting, heroic scale, rich color depth",
-        "Illustrated epic fantasy poster, dynamic composition"
+        # "Mythic oil painting, heroic scale, rich color depth",
+        # "Illustrated epic fantasy poster, dynamic composition"
     ],
 
     "Futuristic / uncanny": [
         "Retrofuturistic concept art, uncanny atmosphere",
-        "Cyberdream illustration, neon accents, soft focus",
-        "Surreal sci-fi painting, liminal spaces"
+        # "Cyberdream illustration, neon accents, soft focus",
+        # "Surreal sci-fi painting, liminal spaces"
     ],
 
     "Nightmarish / dark": [
