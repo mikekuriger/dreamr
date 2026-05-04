@@ -290,6 +290,7 @@ class Dream(db.Model):
     notes = db.Column(db.Text, nullable=True)
     notes_updated_at = db.Column(db.DateTime, nullable=True)
     is_question = db.Column(db.Boolean, nullable=False, server_default=db.text("0"))
+    interpreter_id = db.Column(db.Integer, db.ForeignKey('interpreters.id'), nullable=True, index=True)
 
     def set_notes(self, notes_text):
         # Only treat explicit None as clear
@@ -495,6 +496,8 @@ def _assign_trial(user):
         db.session.add(trial)
         db.session.commit()
         logger.info("Assigned 5-day trial to new user %s", user.id)
+        # Eagerly create the user_credits row so credits are ready when trial expires
+        get_or_create_credits(user.id)
     except Exception as e:
         logger.warning("Failed to assign trial to user %s: %s", user.id, e)
         db.session.rollback()
@@ -2694,7 +2697,8 @@ def chat():
         dream = Dream(
             user_id=current_user.id,
             text=message,
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
+            interpreter_id=(interp.id if interp else None),
         )
         db.session.add(dream)
         db.session.commit()
@@ -3285,10 +3289,12 @@ def generate_dream_image():
 @app.route("/api/alldreams", methods=["GET"])
 @login_required
 def get_alldreams():
-    user_tz = ZoneInfo(current_user.timezone or "UTC") 
+    user_tz = ZoneInfo(current_user.timezone or "UTC")
 
-    dreams = Dream.query.filter(Dream.user_id == current_user.id).order_by(Dream.created_at.desc()).all()
-    
+    rows = db.session.query(Dream, Interpreter).outerjoin(
+        Interpreter, Dream.interpreter_id == Interpreter.id
+    ).filter(Dream.user_id == current_user.id).order_by(Dream.created_at.desc()).all()
+
     def convert_created_at(dt):
         try:
             print(f"Original datetime: {dt} (tzinfo={dt.tzinfo})")
@@ -3297,6 +3303,12 @@ def get_alldreams():
             print(f"[ERROR] Timestamp conversion failed: {e}")
             traceback.print_exc()
             return None
+
+    def interpreter_icon_path(interp):
+        if not interp:
+            return None
+        f = interp.animated_icon_file or interp.icon_file
+        return f"/static/images/interpreters/{f}" if f else None
 
     return jsonify([
         {
@@ -3308,8 +3320,11 @@ def get_alldreams():
             "tone": d.tone,
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
-            "created_at": convert_created_at(d.created_at) if d.created_at else None
-        } for d in dreams
+            "created_at": convert_created_at(d.created_at) if d.created_at else None,
+            "interpreter_id": d.interpreter_id,
+            "interpreter_name": interp.name if interp else None,
+            "interpreter_icon": interpreter_icon_path(interp),
+        } for d, interp in rows
     ])
 
 # fetch gallery images
@@ -3371,13 +3386,15 @@ def get_gallery():
 @app.route("/api/dreams", methods=["GET"])
 @login_required
 def get_dreams():
-    user_tz = ZoneInfo(current_user.timezone or "UTC") 
+    user_tz = ZoneInfo(current_user.timezone or "UTC")
 
-    dreams = Dream.query.filter(
+    rows = db.session.query(Dream, Interpreter).outerjoin(
+        Interpreter, Dream.interpreter_id == Interpreter.id
+    ).filter(
         Dream.user_id == current_user.id,
         or_(Dream.hidden == False, Dream.hidden.is_(None))
     ).order_by(Dream.created_at.desc()).all()
-    
+
     def convert_created_at(dt):
         try:
             print(f"Original datetime: {dt} (tzinfo={dt.tzinfo})")
@@ -3386,6 +3403,12 @@ def get_dreams():
             print(f"[ERROR] Timestamp conversion failed: {e}")
             traceback.print_exc()
             return None
+
+    def interpreter_icon_path(interp):
+        if not interp:
+            return None
+        f = interp.animated_icon_file or interp.icon_file
+        return f"/static/images/interpreters/{f}" if f else None
 
     return jsonify([
         {
@@ -3397,8 +3420,11 @@ def get_dreams():
             "image_file": f"/static/images/dreams/{d.image_file}" if d.image_file else None,
             "image_tile": f"/static/images/tiles/{d.image_file}" if d.image_file else None,
             "created_at": convert_created_at(d.created_at) if d.created_at else None,
-            "notes": d.notes
-        } for d in dreams
+            "notes": d.notes,
+            "interpreter_id": d.interpreter_id,
+            "interpreter_name": interp.name if interp else None,
+            "interpreter_icon": interpreter_icon_path(interp),
+        } for d, interp in rows
     ])
 
 # For deleting dreams, and moving the images
@@ -3638,11 +3664,8 @@ def get_subscription_status():
     try:
         status = SubscriptionService.get_user_subscription_status(current_user.id)
 
-        # If not subscribed, attach counters
-        tier = (status.get("tier") or "").lower()
-        if status.get("is_active") and (tier.startswith("pro") or tier.startswith("trial")):
-            return jsonify(status)
-        
+        # Always attach credit counters so the app can show purchased credits
+        # even for active pro/trial subscribers
         uc = ensure_week_current(current_user.id)
         status.update({
             "free_credits": uc.free_credits,
@@ -4302,8 +4325,8 @@ def admin_users_list():
         <th style="width:110px">{{ sort_link('Last Dream', 'last_dream') }}</th>
         <th style="width:120px">Plan</th>
         <th style="width:80px">Status</th>
-        <th style="width:80px">Free Credits</th>
-        <th style="width:80px">Paid Credits</th>
+        <th style="width:80px">Text/wk</th>
+        <th style="width:80px">Images</th>
       </tr>
       {% for u in users %}
         {% set s = latest_subs.get(u.id) %}
