@@ -124,9 +124,10 @@ Strict safety rules:
 
 Instead:
 - Represent fear, danger, or “brutal” emotions ONLY through abstract or symbolic imagery:
-  - e.g. dark storms, fractured landscapes, twisted architecture, looming shadows, distorted clocks, crumbling statues, cracked mirrors, etc.
+  - e.g. dark storms, fractured landscapes, twisted architecture, looming shadows, distorted objects, crumbling statues, cracked mirrors, etc.
 - Focus on scenery, colors, lighting, atmosphere, and symbolic objects.
 - Keep everything PG-13 and non-graphic.
+- Do not add random clocks to the image
 
 Style:
 - No dialogue or story, only visual description.
