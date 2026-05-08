@@ -9,10 +9,49 @@
 		<string>c103daad1d87e0e43a427a27f0128128</string>
 		<key>FacebookDisplayName</key>
 		<string>Dreamr</string>
+		<key>FacebookAutoLogAppEventsEnabled</key>
+		<true/>
 		<key>FacebookAdvertiserIDCollectionEnabled</key>
-		<false/>
-		<!-- <key>NSUserTrackingUsageDescription</key>
-		<string>This identifier may be used to show personalized ads and measure ad performance.</string> -->
+		<true/>
+
+		<!-- ATT prompt shown before accessing IDFA -->
+		<key>NSUserTrackingUsageDescription</key>
+		<string>This identifier may be used to show personalized ads and measure ad performance.</string>
+
+		<!-- SKAdNetwork: required for iOS install attribution (privacy-safe, no consent needed) -->
+		<!-- Google Ads IDs: https://developers.google.com/admob/ios/3p-skadnetworks -->
+		<!-- Meta/Facebook IDs: https://developers.facebook.com/docs/SKAdNetwork -->
+		<key>SKAdNetworkItems</key>
+		<array>
+			<!-- Google Ads -->
+			<dict><key>SKAdNetworkIdentifier</key><string>cstr6suwn9.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>4fzdc2evr5.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>4pfyvq9l8r.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>ggvn48r87t.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>kbd757ywx3.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>9t245vhmpl.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>2fnua5tdw4.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>uw77j35x4d.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>578prtvx9j.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>4dzt52r2t5.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>e5fvkxwrpn.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>8s468mfl3y.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>2u9pt9hc89.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>7ug5zh24hu.skadnetwork</string></dict>
+			<!-- Meta / Facebook -->
+			<dict><key>SKAdNetworkIdentifier</key><string>v9wttpbfk9.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>n38lu8286q.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>9rd848q2bq.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>3qy4746246.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>t38b2kh725.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>prcb7njmu6.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>ppxm28t8ap.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>ydx93a7ass.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>488r3q3dtq.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>4468km3ulz.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>6g9af3uyq4.skadnetwork</string></dict>
+			<dict><key>SKAdNetworkIdentifier</key><string>mlmmfzh3r3.skadnetwork</string></dict>
+		</array>
 		<key>LSApplicationQueriesSchemes</key>
 		<array>
 			<string>fbapi</string>

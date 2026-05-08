@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 
-version: 1.0.16+22                                       # No need to change in build.gradle.kts and HELP SCREEN
+version: 1.0.18+25           # No need to change in build.gradle.kts or HELP SCREEN
 
 environment:
   #sdk: ^3.7.2
@@ -88,6 +88,7 @@ dependencies:
   in_app_purchase_android: ^0.4.0+8
   in_app_purchase_storekit: ^0.4.6+2
   flutter_facebook_auth: ^7.0.1
+  app_tracking_transparency: ^2.0.6+1
   flutter_slidable: ^3.1.0
   facebook_app_events: ^0.26.0
 

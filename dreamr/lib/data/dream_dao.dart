@@ -18,7 +18,7 @@ class DreamDao {
     final dbPath = p.join(dir.path, 'dreamr.db');
     _db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE dreams (
@@ -32,11 +32,21 @@ class DreamDao {
             hidden INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             image_file TEXT,
-            image_tile TEXT
+            image_tile TEXT,
+            interpreter_id INTEGER,
+            interpreter_name TEXT,
+            interpreter_icon TEXT
           )
         ''');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_dreams_created_at ON dreams(created_at DESC)');
         await db.execute('CREATE INDEX IF NOT EXISTS idx_dreams_hidden ON dreams(hidden)');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE dreams ADD COLUMN interpreter_id INTEGER');
+          await db.execute('ALTER TABLE dreams ADD COLUMN interpreter_name TEXT');
+          await db.execute('ALTER TABLE dreams ADD COLUMN interpreter_icon TEXT');
+        }
       },
     );
     return _db!;
@@ -54,6 +64,9 @@ class DreamDao {
     'created_at': d.createdAt.toIso8601String(),
     'image_file': d.imageFile,
     'image_tile': d.imageTile,
+    'interpreter_id': d.interpreterId,
+    'interpreter_name': d.interpreterName,
+    'interpreter_icon': d.interpreterIcon,
   };
 
   Dream _fromMap(Map<String, Object?> m) {
@@ -69,6 +82,9 @@ class DreamDao {
       createdAt: DateTime.parse((m['created_at'] as String)),
       imageFile: m['image_file'] as String?,
       imageTile: m['image_tile'] as String?,
+      interpreterId: (m['interpreter_id'] as num?)?.toInt(),
+      interpreterName: m['interpreter_name'] as String?,
+      interpreterIcon: m['interpreter_icon'] as String?,
     );
   }
 

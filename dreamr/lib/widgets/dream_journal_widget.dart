@@ -14,6 +14,7 @@ import 'package:mime/mime.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dreamr/data/dream_dao.dart';
+import 'package:dreamr/widgets/interpreter_icon_widget.dart';
 
 // import 'package:provider/provider.dart';
 // import 'package:dreamr/models/interpreter.dart'; // adjust path to your actual model file
@@ -1215,13 +1216,36 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
 
                                   // Dream Analysis
                                   if (dream.analysis.isNotEmpty) ...[
-                                    Text(
-                                      "Analysis:",
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.dreamCardText,
-                                      ),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        if (dream.interpreterIcon != null && dream.interpreterIcon!.isNotEmpty) ...[
+                                          Tooltip(
+                                            message: dream.interpreterName ?? '',
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: SizedBox(
+                                                width: 48,
+                                                height: 48,
+                                                child: InterpreterIconWidget(
+                                                  url: dream.interpreterIcon!,
+                                                  iconSize: 18,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                        ],
+                                        // const SizedBox(width: 8),
+                                        Text(
+                                          "Analysis:",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.dreamCardText,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                     const SizedBox(height: 4),
                                     MarkdownBody(

@@ -1,4 +1,5 @@
 // screens/splash_screen.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:dreamr/state/subscription_model.dart';
 import 'package:dreamr/services/notification_service.dart';
 import 'package:dreamr/services/prefetch_service.dart';
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 
 
 class SplashScreen extends StatefulWidget {
@@ -34,7 +36,20 @@ class _SplashScreenState extends State<SplashScreen> {
     _attemptAutoLogin();
   }
 
+  // Request ATT authorization on iOS before any login or ad network activity.
+  // SKAdNetwork works without consent, but IDFA-based attribution requires it.
+  Future<void> _requestTrackingIfNeeded() async {
+    if (!Platform.isIOS) return;
+    final status = await AppTrackingTransparency.trackingAuthorizationStatus;
+    if (status == TrackingStatus.notDetermined) {
+      // Brief delay so the splash UI is visible before the system dialog appears.
+      await Future.delayed(const Duration(milliseconds: 300));
+      await AppTrackingTransparency.requestTrackingAuthorization();
+    }
+  }
+
   void _attemptAutoLogin() async {
+    await _requestTrackingIfNeeded();
     try {
       final prefs = await SharedPreferences.getInstance();
       final wasLoggedIn = prefs.getBool('loggedIn') ?? false;

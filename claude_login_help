@@ -1,0 +1,16 @@
+It sounds like Claude Code might be installed as a VS Code extension rather than the CLI. Let me help you find the right way to refresh it.Got it — you have the VS Code **extension** (not the CLI). Here's the simplest fix:
+
+**Try the VS Code Command Palette:**
+1. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
+2. Type **"Claude Code"** and look for any option related to sign out / logout / re-authenticate
+3. Sign back in — this should refresh your account balance
+
+**Or reload the VS Code window:**
+1. Press `Cmd+Shift+P` / `Ctrl+Shift+P`
+2. Type **"Developer: Reload Window"** and hit Enter
+
+**Also worth double-checking:** where did you add the credits? The extension can use two different accounts:
+- **claude.ai** (Pro/Max subscription) — credits are on your plan
+- **console.anthropic.com** (API/pay-as-you-go) — credits are added at platform.anthropic.com/settings/billing
+
+If you're already logged into Claude Code via Console pay-as-you-go, you can run `/login` from within the Claude Code chat panel to switch to your subscription plan instead. The `/login` command does work inside the extension chat — it's `/logout` that isn't supported there.

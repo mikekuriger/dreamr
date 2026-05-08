@@ -14,6 +14,9 @@ class Dream {
   final String? imageFile;
   final String? imageTile;
   final String notes;
+  final int? interpreterId;
+  final String? interpreterName;
+  final String? interpreterIcon;
 
   Dream({
     required this.id,
@@ -28,6 +31,9 @@ class Dream {
     this.imageFile,
     this.imageTile,
     this.notes = "",
+    this.interpreterId,
+    this.interpreterName,
+    this.interpreterIcon,
   });
 
   Dream copyWith({
@@ -43,6 +49,9 @@ class Dream {
     String? imageFile,
     String? imageTile,
     String? notes,
+    int? interpreterId,
+    String? interpreterName,
+    String? interpreterIcon,
   }) {
     return Dream(
       id: id ?? this.id,
@@ -57,6 +66,9 @@ class Dream {
       imageFile: imageFile ?? this.imageFile,
       imageTile: imageTile ?? this.imageTile,
       notes: notes ?? this.notes,
+      interpreterId: interpreterId ?? this.interpreterId,
+      interpreterName: interpreterName ?? this.interpreterName,
+      interpreterIcon: interpreterIcon ?? this.interpreterIcon,
     );
   }
 
@@ -78,6 +90,15 @@ class Dream {
         ? '${AppConfig.baseUrl}${json['image_tile']}'
         : null,
       notes: (json['notes'] as String?)?.trim() ?? "",
+      interpreterId: json['interpreter_id'] is int
+        ? json['interpreter_id'] as int
+        : int.tryParse(json['interpreter_id']?.toString() ?? ''),
+      interpreterName: (json['interpreter_name'] as String?)?.trim(),
+      interpreterIcon: json['interpreter_icon'] != null
+        ? (json['interpreter_icon'].toString().startsWith('http')
+            ? json['interpreter_icon'] as String
+            : '${AppConfig.baseUrl}${json['interpreter_icon']}')
+        : null,
     );
   }
 }
