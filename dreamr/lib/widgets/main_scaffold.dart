@@ -279,15 +279,9 @@ class _MainScaffoldState extends State<MainScaffold> {
       case 2:
         title = "Dreamr ✨ Gallery";
         break;
-      // case 3:
-      //   title = "Dreamr ✨ Help";
-      //   break;
-      // case 3:
-      //   title = "Dreamr ✨ Manage Journal";
-      //   break;
-      // case 4:
-      //   title = "Dreamr ✨ Profile";
-      //   break;
+      case 5:
+        title = "Dreamr ✨ Insights";
+        break;
       default:
         title = "Dreamr";
     }

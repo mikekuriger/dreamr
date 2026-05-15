@@ -112,39 +112,9 @@ class _InsightsScreenState extends State<InsightsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.purple950,
-      appBar: AppBar(
-        backgroundColor: AppColors.purple950,
-        foregroundColor: Colors.white,
-        elevation: 4,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Dreamr ✨ Insights',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Patterns, symbols, and themes from your journal',
-              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFFD1B2FF)),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : _load,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        child: _buildBody(),
-      ),
-    );
+    // Renders inside the MainScaffold (which already provides its own AppBar
+    // and SafeArea), so this returns just the body content.
+    return _buildBody();
   }
 
   Widget _buildBody() {
