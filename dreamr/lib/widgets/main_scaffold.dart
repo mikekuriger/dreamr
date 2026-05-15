@@ -28,6 +28,7 @@ final ValueNotifier<int> galleryRefreshTrigger = ValueNotifier<int>(0);
 final ValueNotifier<int> profileRefreshTrigger = ValueNotifier<int>(0);
 final ValueNotifier<int> editorRefreshTrigger = ValueNotifier<int>(0);
 final ValueNotifier<int> settingsRefreshTrigger = ValueNotifier<int>(0);
+final ValueNotifier<int> insightsRefreshTrigger = ValueNotifier<int>(0);
 
 
 class MainScaffold extends StatefulWidget {
@@ -105,14 +106,6 @@ class _MainScaffoldState extends State<MainScaffold> {
           context,
           MaterialPageRoute(
             builder: (context) => const InterpretersScreen(),
-          ),
-        );
-        break;
-      case '/insights':
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const InsightsScreen(),
           ),
         );
         break;
@@ -218,16 +211,6 @@ class _MainScaffoldState extends State<MainScaffold> {
               Icon(Icons.psychology, color: Colors.white),
               SizedBox(width: 8),
               Text('Dream Interpreters', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-        PopupMenuItem(
-          value: '/insights',
-          child: Row(
-            children: [
-              Icon(Icons.auto_awesome, color: Colors.white),
-              SizedBox(width: 8),
-              Text('Dream Insights', style: TextStyle(color: Colors.white)),
             ],
           ),
         ),
@@ -354,11 +337,12 @@ class _MainScaffoldState extends State<MainScaffold> {
         refreshTrigger: profileRefreshTrigger,
         onDone: () {
           setState(() {
-            _selectedIndex = 1; 
+            _selectedIndex = 1;
           });
-          // _loadUserName(); 
+          // _loadUserName();
         },
       ),
+      InsightsScreen(refreshTrigger: insightsRefreshTrigger), // index 5
     ];
   }
 
@@ -368,52 +352,49 @@ class _MainScaffoldState extends State<MainScaffold> {
     super.dispose();
   }
 
-  void _onBottomNavTapped(int index) {
+  // Bottom-nav positions don't map 1:1 to view indices anymore:
+  // nav slots are [Add Dream, Journal, Gallery, Insights] but views are
+  // [Add Dream(0), Journal(1), Gallery(2), HiddenEditor(3), Profile(4), Insights(5)].
+  int _viewIndexToNavIndex(int viewIndex) {
+    if (viewIndex == 5) return 3; // Insights
+    if (viewIndex == 3) return 1; // Hidden editor highlights Journal
+    return viewIndex.clamp(0, 2);
+  }
+
+  void _onBottomNavTapped(int navIndex) {
     // force close keyboard
     FocusScope.of(context).unfocus();
 
     final subscriptionModel = Provider.of<SubscriptionModel>(context, listen: false);
 
-    // if (index == 0 && isOutOfCredits) {
-    //   // Redirect to subscription screen instead
-    //   Navigator.push(
-    //     context, 
-    //     MaterialPageRoute(
-    //       // builder: (context) => const SubscriptionScreen(),
-    //       builder: (context) => const SubscriptionScreen(),
-    //     ),
-    //   );
-    //   return;
-    // }
-
-    // Trigger refresh logic based on index
-    switch (index) {
+    int viewIndex;
+    switch (navIndex) {
       case 0:
+        viewIndex = 0;
         dreamEntryRefreshTrigger.value++;
         break;
       case 1:
+        viewIndex = 1;
         journalRefreshTrigger.value++;
         break;
       case 2:
+        viewIndex = 2;
         galleryRefreshTrigger.value++;
         break;
-      // case 3:
-      //   helpRefreshTrigger.value++;
-      //   break;
       case 3:
-        editorRefreshTrigger.value++;
+        viewIndex = 5;
+        insightsRefreshTrigger.value++;
         break;
-      case 4:
-        profileRefreshTrigger.value++;
-        break;
+      default:
+        viewIndex = navIndex;
     }
-    
+
     // Force a refresh of subscription data to ensure buttons are up-to-date
     subscriptionModel.refresh();
-    
-    _dashboardActive.value = (index == 0);
+
+    _dashboardActive.value = (viewIndex == 0);
     setState(() {
-      _selectedIndex = index;
+      _selectedIndex = viewIndex;
     });
   }
 
@@ -469,7 +450,7 @@ class _MainScaffoldState extends State<MainScaffold> {
       bottomNavigationBar: (_selectedIndex == 4 || !_navEnabled)
     ? null // hide nav on profile page OR when analyzing
     : BottomNavigationBar(
-        currentIndex: (_selectedIndex == 3) ? 1 : _selectedIndex.clamp(0, 2),
+        currentIndex: _viewIndexToNavIndex(_selectedIndex),
         onTap: _onBottomNavTapped,
         unselectedItemColor: Colors.white70,
         selectedItemColor: Colors.white,
@@ -480,9 +461,7 @@ class _MainScaffoldState extends State<MainScaffold> {
         elevation: 8,
         items: [
           _buildNavItem(
-            // icon: Icons.psychology_alt,
             icon: Icons.nights_stay_rounded,
-            // icon: Icons.nightlight,
             label: 'Add Dream',
             index: 0,
           ),
@@ -495,6 +474,11 @@ class _MainScaffoldState extends State<MainScaffold> {
             icon: Icons.photo_library_rounded,
             label: 'Gallery',
             index: 2,
+          ),
+          _buildNavItem(
+            icon: Icons.auto_awesome,
+            label: 'Insights',
+            index: 3,
           ),
         ],
       ),
@@ -510,8 +494,8 @@ class _MainScaffoldState extends State<MainScaffold> {
     // Get CURRENT subscription data directly from the provider
     final subscriptionModel = Provider.of<SubscriptionModel>(context, listen: true);
     
-    // Calculate current index for comparison (handle the special case for index 3)
-    final currentIdx = (_selectedIndex == 3) ? 1 : _selectedIndex.clamp(0, 2);
+    // Calculate current nav index for comparison (views and nav slots aren't 1:1)
+    final currentIdx = _viewIndexToNavIndex(_selectedIndex);
     final isSelected = currentIdx == index;
     
     // Only enforce out-of-credits state once subscription info is loaded.

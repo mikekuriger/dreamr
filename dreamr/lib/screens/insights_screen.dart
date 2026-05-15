@@ -9,7 +9,8 @@ import 'package:dreamr/widgets/dream_journal_widget.dart';
 import 'package:dreamr/theme/colors.dart';
 
 class InsightsScreen extends StatefulWidget {
-  const InsightsScreen({super.key});
+  final ValueNotifier<int>? refreshTrigger;
+  const InsightsScreen({super.key, this.refreshTrigger});
 
   @override
   State<InsightsScreen> createState() => _InsightsScreenState();
@@ -24,6 +25,17 @@ class _InsightsScreenState extends State<InsightsScreen> {
   void initState() {
     super.initState();
     _load();
+    widget.refreshTrigger?.addListener(_onRefreshTriggered);
+  }
+
+  @override
+  void dispose() {
+    widget.refreshTrigger?.removeListener(_onRefreshTriggered);
+    super.dispose();
+  }
+
+  void _onRefreshTriggered() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
