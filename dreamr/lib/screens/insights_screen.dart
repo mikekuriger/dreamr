@@ -20,6 +20,8 @@ class _InsightsScreenState extends State<InsightsScreen> {
   bool _loading = true;
   String? _error;
   DreamInsights? _insights;
+  DeepInsightsResponse? _deep;
+  bool _refreshingDeep = false;
 
   @override
   void initState() {
@@ -44,11 +46,20 @@ class _InsightsScreenState extends State<InsightsScreen> {
       _error = null;
     });
     try {
-      final dreams = await ApiService.fetchDreams();
+      // Fetch both in parallel — local insights don't need the server, but
+      // we want both ready before rendering so the screen doesn't jitter.
+      final results = await Future.wait([
+        ApiService.fetchDreams(),
+        ApiService.fetchInsights().catchError((_) => <String, dynamic>{}),
+      ]);
+      final dreams = results[0] as List<Dream>;
+      final deepRaw = results[1] as Map<String, dynamic>;
       final insights = InsightsAnalyzer.analyze(dreams);
+      final deep = deepRaw.isEmpty ? null : DeepInsightsResponse.fromJson(deepRaw);
       if (!mounted) return;
       setState(() {
         _insights = insights;
+        _deep = deep;
         _loading = false;
       });
     } catch (e) {
@@ -57,6 +68,27 @@ class _InsightsScreenState extends State<InsightsScreen> {
         _error = 'Could not load dreams: $e';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refreshDeepInsight() async {
+    setState(() => _refreshingDeep = true);
+    try {
+      final raw = await ApiService.refreshInsights();
+      final parsed = DeepInsightsResponse.fromJson(raw);
+      if (!mounted) return;
+      setState(() => _deep = parsed);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fresh interpretation generated ✨')),
+      );
+    } on InsightsRefreshError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+    } finally {
+      if (mounted) setState(() => _refreshingDeep = false);
     }
   }
 
@@ -168,9 +200,161 @@ class _InsightsScreenState extends State<InsightsScreen> {
             ...insights.patterns.map(_patternCard),
             const SizedBox(height: 16),
           ],
-          _whyDreamsRepeatCard(insights),
+          _deepInsightSection(insights),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  // ===================== AI deep insight section =====================
+
+  Widget _deepInsightSection(DreamInsights insights) {
+    final deep = _deep;
+    // Locked: not enough dreams yet
+    if (deep != null && deep.locked) {
+      return _lockedCard(deep);
+    }
+    // Eligible but no record yet (cron hasn't run, or first time)
+    if (deep == null || deep.insight == null) {
+      return _awaitingFirstRunCard();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _whyDreamsRepeatCard(deep.insight!),
+        if (deep.insight!.questions.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _sectionTitle('✨ Questions to Sit With'),
+          const SizedBox(height: 8),
+          _questionsCard(deep.insight!.questions),
+        ],
+      ],
+    );
+  }
+
+  Widget _lockedCard(DeepInsightsResponse deep) {
+    final required = deep.dreamsRequired ?? 10;
+    final current = deep.current ?? 0;
+    final remaining = (required - current).clamp(0, required);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.black.withAlpha(180),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.lock_outline, color: Colors.white70, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Deep Interpretation Locked',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            remaining == 0
+                ? 'You have enough dreams — your first deep interpretation will appear after the next weekly run.'
+                : 'Log $remaining more ${remaining == 1 ? "dream" : "dreams"} to unlock your first deep AI interpretation.',
+            style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: required == 0 ? 0 : (current / required).clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: Colors.white12,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.deepPurple.shade200),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '$current / $required dreams',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _awaitingFirstRunCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.purple900.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.deepPurple.shade300, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🌙 Deep Interpretation',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Your AI-written reflection runs weekly and looks across your whole journal for the threads that connect one dream to the next.",
+            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ElevatedButton.icon(
+              onPressed: _refreshingDeep ? null : _refreshDeepInsight,
+              icon: _refreshingDeep
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.auto_awesome),
+              label: Text(_refreshingDeep ? 'Generating…' : 'Generate first interpretation'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.deepPurple.shade700,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _questionsCard(List<String> questions) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.black.withAlpha(200),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.purple400.withValues(alpha: 0.5), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: questions
+            .map((q) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2, right: 8),
+                        child: Text('•', style: TextStyle(color: Colors.yellow, fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
+                      Expanded(
+                        child: Text(
+                          q,
+                          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ))
+            .toList(),
       ),
     );
   }
@@ -506,40 +690,37 @@ class _InsightsScreenState extends State<InsightsScreen> {
     );
   }
 
-  // Placeholder for the future AI-generated narrative. Today this composes a
-  // gentle reflection from the local data — no network call. When the backend
-  // /api/insights endpoint exists, swap the body of this card for the returned
-  // narrative and add a "Generate fresh interpretation" button.
-  Widget _whyDreamsRepeatCard(DreamInsights insights) {
-    final lines = <String>[];
-    if (insights.symbols.isNotEmpty) {
-      final top = insights.symbols.first;
-      lines.add(
-        '${top.name} keeps returning — it has surfaced in ${top.count} of your dreams. Symbols that recur are usually trying to be noticed.',
-      );
+  Widget _whyDreamsRepeatCard(DeepInsight insight) {
+    final age = DateTime.now().difference(insight.generatedAt);
+    final fresh = age.inHours < 24;
+    String ago;
+    if (age.inMinutes < 60) {
+      ago = '${age.inMinutes} min ago';
+    } else if (age.inHours < 24) {
+      ago = '${age.inHours}h ago';
+    } else if (age.inDays < 7) {
+      ago = '${age.inDays}d ago';
+    } else {
+      ago = '${(age.inDays / 7).floor()}w ago';
     }
-    if (insights.themes.isNotEmpty) {
-      final top = insights.themes.first;
-      lines.add(
-        'The dominant emotional thread is ${top.label.toLowerCase()}. That mood is the lens your sleeping mind seems to be looking through right now.',
-      );
-    }
-    if (insights.symbols.length > 1) {
-      final second = insights.symbols[1];
-      lines.add(
-        '${second.name} shows up too, appearing in ${second.count} dreams. Pairings tell a richer story than any single image.',
-      );
-    }
-    if (lines.isEmpty) {
-      lines.add(
-        'As your journal grows, recurring images and feelings will gather here — the threads that connect one dream to the next.',
-      );
-    }
+
+    final paragraphs = insight.narrative
+        .split(RegExp(r'\n{2,}|\n'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.purple900.withValues(alpha: 0.7),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.purple900.withValues(alpha: 0.85),
+            AppColors.purple950,
+          ],
+        ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.deepPurple.shade200, width: 1),
         boxShadow: [
@@ -553,24 +734,59 @@ class _InsightsScreenState extends State<InsightsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '🌙 Why Your Dreams Repeat',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '🌙 Why Your Dreams Repeat',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+              if (fresh)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.yellow.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'FRESH',
+                    style: TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 8),
-          ...lines.map(
-            (l) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+          const SizedBox(height: 2),
+          Text(
+            'Generated $ago · across ${insight.dreamCount} dreams',
+            style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
+          ),
+          const SizedBox(height: 12),
+          ...paragraphs.map(
+            (p) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
               child: Text(
-                l,
+                p,
                 style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
               ),
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Tip: deeper AI interpretation coming soon. For now, tap a symbol or theme above to revisit the dreams behind it.',
-            style: TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _refreshingDeep ? null : _refreshDeepInsight,
+              icon: _refreshingDeep
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.refresh, size: 16, color: Colors.white70),
+              label: Text(
+                _refreshingDeep ? 'Generating…' : 'Generate fresh interpretation',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+            ),
           ),
         ],
       ),

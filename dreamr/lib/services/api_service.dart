@@ -54,6 +54,20 @@ class NotesHttp implements Exception {
   String toString() => 'NotesHttp($status): $message';
 }
 
+// ---- Insights refresh ----
+class InsightsRefreshError implements Exception {
+  final String kind; // "pro_required" | "rate_limited" | "failed"
+  final String message;
+  final int? retryAfterSeconds;
+  const InsightsRefreshError({
+    required this.kind,
+    required this.message,
+    this.retryAfterSeconds,
+  });
+  @override
+  String toString() => 'InsightsRefreshError($kind): $message';
+}
+
 
 Map<String, dynamic> _ensureMap(dynamic v, String when, int? status) {
   if (v is Map) return Map<String, dynamic>.from(v);
@@ -431,6 +445,50 @@ class ApiService {
     } else {
       throw Exception('Failed to fetch dreams: ${response.statusMessage}');
     }
+  }
+
+  // Fetch the latest deep insight for the current user.
+  // Returns the raw payload; the caller decides how to render locked vs. loaded.
+  // Shape (always 200 on success):
+  //   { "locked": true, "dreams_required": N, "current": N }                    when below threshold
+  //   { "locked": false, "insight": null }                                       when eligible but none yet
+  //   { "locked": false, "insight": {...full DreamInsight...} }                  when present
+  static Future<Map<String, dynamic>> fetchInsights() async {
+    final response = await DioClient.dio.get('/api/insights');
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    throw Exception('Failed to fetch insights: ${response.statusMessage}');
+  }
+
+  // Force a fresh deep-insight generation (pro-only, rate-limited server-side).
+  // Throws Exception on 402 (pro_required) or 429 (rate_limited) so the UI
+  // can show a tailored message.
+  static Future<Map<String, dynamic>> refreshInsights() async {
+    final response = await DioClient.dio.post(
+      '/api/insights/refresh',
+      options: Options(validateStatus: (_) => true),
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    final body = response.data is Map ? Map<String, dynamic>.from(response.data) : const {};
+    if (code == 402) {
+      throw InsightsRefreshError(kind: 'pro_required', message: 'Pro subscription required to refresh on demand.');
+    }
+    if (code == 429) {
+      final retry = body['retry_after_seconds'];
+      throw InsightsRefreshError(
+        kind: 'rate_limited',
+        message: 'Please wait before refreshing again.',
+        retryAfterSeconds: retry is int ? retry : null,
+      );
+    }
+    throw InsightsRefreshError(
+      kind: 'failed',
+      message: body['detail']?.toString() ?? 'Could not refresh insights.',
+    );
   }
 
   // Fetch dreams for Gallery
