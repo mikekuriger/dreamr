@@ -560,7 +560,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                   Text(t.emoji, style: const TextStyle(fontSize: 18)),
                   const SizedBox(width: 8),
                   Expanded(
-                    flex: 4,
+                    flex: 6,
                     child: Text(
                       t.label,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
@@ -568,7 +568,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
                     ),
                   ),
                   Expanded(
-                    flex: 5,
+                    flex: 3,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
