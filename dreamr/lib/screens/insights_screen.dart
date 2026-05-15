@@ -460,14 +460,14 @@ class _InsightsScreenState extends State<InsightsScreen> {
         crossAxisCount: 4,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
-        childAspectRatio: 0.85,
+        childAspectRatio: 0.82,
       ),
       itemBuilder: (context, i) {
         final s = symbols[i];
         return GestureDetector(
           onTap: () => _showSymbolSheet(s),
           child: Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
             decoration: BoxDecoration(
               color: AppColors.black.withAlpha(200),
               borderRadius: BorderRadius.circular(10),
@@ -476,19 +476,23 @@ class _InsightsScreenState extends State<InsightsScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(s.icon, style: const TextStyle(fontSize: 26)),
+                // height: 1.0 tightens the emoji's line box (emojis ship with
+                // generous default line height that can push the cell over).
+                Text(s.icon, style: const TextStyle(fontSize: 26, height: 1.0)),
                 const SizedBox(height: 4),
-                Text(
-                  s.name,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                Flexible(
+                  child: Text(
+                    s.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '×${s.count}',
-                  style: const TextStyle(color: Colors.yellow, fontSize: 11, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Colors.yellow, fontSize: 11, fontWeight: FontWeight.bold, height: 1.0),
                 ),
               ],
             ),
