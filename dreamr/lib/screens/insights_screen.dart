@@ -1,5 +1,6 @@
 // screens/insights_screen.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:dreamr/models/dream.dart';
 import 'package:dreamr/models/dream_insights.dart';
 import 'package:dreamr/services/api_service.dart';
@@ -691,17 +692,25 @@ class _InsightsScreenState extends State<InsightsScreen> {
   }
 
   Widget _whyDreamsRepeatCard(DeepInsight insight) {
-    final age = DateTime.now().difference(insight.generatedAt);
-    final fresh = age.inHours < 24;
-    String ago;
-    if (age.inMinutes < 60) {
-      ago = '${age.inMinutes} min ago';
-    } else if (age.inHours < 24) {
-      ago = '${age.inHours}h ago';
-    } else if (age.inDays < 7) {
-      ago = '${age.inDays}d ago';
+    // Server now sends timezone-aware UTC; this converts to the device's local
+    // zone so the FRESH pill compares against the correct wall-clock moment.
+    final generatedLocal = insight.generatedAt.toLocal();
+    final now = DateTime.now();
+    final fresh = now.difference(generatedLocal).inHours < 24;
+
+    final genDay = DateTime(generatedLocal.year, generatedLocal.month, generatedLocal.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final daysApart = today.difference(genDay).inDays;
+
+    String when;
+    if (daysApart == 0) {
+      when = 'Updated today';
+    } else if (daysApart == 1) {
+      when = 'Updated yesterday';
+    } else if (daysApart < 7) {
+      when = 'Updated ${DateFormat('EEEE').format(generatedLocal)}'; // "Updated Sunday"
     } else {
-      ago = '${(age.inDays / 7).floor()}w ago';
+      when = 'Updated ${DateFormat('MMM d').format(generatedLocal)}'; // "Updated May 15"
     }
 
     final paragraphs = insight.narrative
@@ -713,20 +722,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.purple900.withValues(alpha: 0.85),
-            AppColors.purple950,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.deepPurple.shade200, width: 1),
+        color: AppColors.black.withAlpha(200),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color.fromARGB(255, 255, 230, 7), width: 1),
         boxShadow: [
           BoxShadow(
-            color: AppColors.purple600.withValues(alpha: 0.3),
-            blurRadius: 10,
+            color: AppColors.purple600.withValues(alpha: 0.4),
+            blurRadius: 8,
             offset: const Offset(0, 4),
           ),
         ],
@@ -758,7 +760,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
           ),
           const SizedBox(height: 2),
           Text(
-            'Generated $ago · across ${insight.dreamCount} dreams',
+            '$when · across ${insight.dreamCount} dreams',
             style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 12),
