@@ -604,7 +604,7 @@ class _FilteredDreamsScreen extends StatelessWidget {
         child: DreamJournalWidget(
           filteredDreams: dreams,
           autoExpandSingle: false,
-          embeddedInScrollView: true,
+          embeddedInScrollView: false,
         ),
       ),
     );
