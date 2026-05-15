@@ -30,6 +30,10 @@ final ValueNotifier<int> editorRefreshTrigger = ValueNotifier<int>(0);
 final ValueNotifier<int> settingsRefreshTrigger = ValueNotifier<int>(0);
 final ValueNotifier<int> insightsRefreshTrigger = ValueNotifier<int>(0);
 
+// Flipped by the AppBar search icon when the Journal tab is active.
+// The journal screen listens and reveals an inline search field.
+final ValueNotifier<bool> journalSearchActive = ValueNotifier<bool>(false);
+
 
 class MainScaffold extends StatefulWidget {
   final int initialIndex;
@@ -392,6 +396,9 @@ class _MainScaffoldState extends State<MainScaffold> {
     // Force a refresh of subscription data to ensure buttons are up-to-date
     subscriptionModel.refresh();
 
+    // Close journal search when leaving the journal tab.
+    if (viewIndex != 1) journalSearchActive.value = false;
+
     _dashboardActive.value = (viewIndex == 0);
     setState(() {
       _selectedIndex = viewIndex;
@@ -408,6 +415,15 @@ class _MainScaffoldState extends State<MainScaffold> {
         automaticallyImplyLeading: false,
         title: _getTitleForIndex(_selectedIndex),
         actions: [
+          if (_selectedIndex == 1)
+            ValueListenableBuilder<bool>(
+              valueListenable: journalSearchActive,
+              builder: (_, active, _) => IconButton(
+                tooltip: active ? 'Close search' : 'Search dreams',
+                icon: Icon(active ? Icons.close : Icons.search, color: Colors.white),
+                onPressed: () => journalSearchActive.value = !active,
+              ),
+            ),
           IconButton(
             key: _menuButtonKey,
             icon: const Icon(Icons.menu, color: Colors.white),

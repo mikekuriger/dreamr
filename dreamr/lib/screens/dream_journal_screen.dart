@@ -1,6 +1,7 @@
 // screens/dream_journal_screen.dart
 // ignore_for_file: unused_field
 
+import 'dart:async';
 import 'package:dreamr/widgets/main_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -49,6 +50,12 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
   // Tone filter
   String? _activeToneFilter;
 
+  // Search filter
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+
   // Visibility preferences
   bool _showStatsSection = true; // Controls if stats section is shown at all
   bool _showCalendarSection = false; // Controls if calendar section is shown at all
@@ -91,6 +98,35 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
         // await _loadQuota();
         dreamDataChanged.value = false;
       }
+    });
+
+    // React to AppBar search toggle.
+    journalSearchActive.addListener(_onSearchToggled);
+  }
+
+  void _onSearchToggled() {
+    final active = journalSearchActive.value;
+    if (active) {
+      // The TextField is autofocus, but request focus explicitly in case it
+      // was previously dismissed while the field remained mounted.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && journalSearchActive.value) _searchFocus.requestFocus();
+      });
+    } else {
+      // Clear query when search is closed so results return to full list.
+      _searchController.clear();
+      _searchDebounce?.cancel();
+      if (mounted) setState(() => _searchQuery = '');
+      _searchFocus.unfocus();
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = value.trim().toLowerCase());
     });
   }
 
@@ -219,10 +255,18 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
       dreams = dreams.where((d) => d.tone.trim().toLowerCase() == _activeToneFilter).toList();
     }
 
+    if (_searchQuery.isNotEmpty) {
+      dreams = dreams.where((d) {
+        final hay = '${d.text}\n${d.summary}\n${d.analysis}\n${d.notes}'.toLowerCase();
+        return hay.contains(_searchQuery);
+      }).toList();
+    }
+
     return dreams;
   }
 
-  bool get _anyFilterActive => _selectedDay != null || _activeToneFilter != null;
+  bool get _anyFilterActive =>
+      _selectedDay != null || _activeToneFilter != null || _searchQuery.isNotEmpty;
 
   // Check if a specific day has dreams
   bool hasDreamsOnDay(DateTime day) {
@@ -283,6 +327,72 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
     return HSVColor.fromAHSV(1.0, hue, 0.7, 0.9).toColor();
   }
   
+  Widget _buildSearchField() {
+    final hasQuery = _searchQuery.isNotEmpty;
+    final matchCount = hasQuery ? getFilteredDreams().length : 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(5, 6, 5, 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppColors.black.withAlpha(180),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.purple400.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.search, color: Colors.white70, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocus,
+                    autofocus: true,
+                    onChanged: _onSearchChanged,
+                    textInputAction: TextInputAction.search,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(
+                      hintText: 'Search dreams…',
+                      hintStyle: TextStyle(color: Colors.white38),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                if (hasQuery)
+                  IconButton(
+                    tooltip: 'Clear',
+                    icon: const Icon(Icons.cancel, color: Colors.white54, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      _searchController.clear();
+                      _searchDebounce?.cancel();
+                      setState(() => _searchQuery = '');
+                    },
+                  ),
+              ],
+            ),
+          ),
+          if (hasQuery)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                matchCount == 0
+                    ? 'No matches'
+                    : '$matchCount ${matchCount == 1 ? "match" : "matches"}',
+                style: const TextStyle(color: Colors.white60, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // Build sorted mood bars
   List<Widget> _buildSortedMoodBars() {
     if (_toneCounts.isEmpty) {
@@ -563,6 +673,10 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
   void dispose() {
     widget.refreshTrigger.removeListener(_refreshJournal);
     dreamDataChanged.removeListener(_refreshJournal);  // if you want to clean that too
+    journalSearchActive.removeListener(_onSearchToggled);
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -581,6 +695,15 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           children: [
+            // Animated search field — slides down when AppBar search icon is tapped.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              child: journalSearchActive.value
+                  ? _buildSearchField()
+                  : const SizedBox.shrink(),
+            ),
+
             // Stats section - only show if preference is enabled
             if (_showStatsSection)
             Padding(
