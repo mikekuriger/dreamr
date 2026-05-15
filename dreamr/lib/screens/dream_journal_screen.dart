@@ -9,6 +9,7 @@ import 'package:dreamr/constants.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dreamr/models/dream.dart';
+import 'package:dreamr/screens/insights_screen.dart';
 import 'package:dreamr/theme/colors.dart';
 
 // Custom enum to replace missing CalendarFormat
@@ -744,28 +745,50 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                               ],
 
                               const SizedBox(height: 10),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: ElevatedButton.icon(
-                                  icon: const Icon(Icons.edit_note),
-                                  label: const Text("Add a New Dream"),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.deepPurple.shade600,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  onPressed: () {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const MainScaffold(initialIndex: 0),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.edit_note),
+                                    label: const Text("Add a New Dream"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.deepPurple.shade600,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const MainScaffold(initialIndex: 0),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  ElevatedButton.icon(
+                                    icon: const Icon(Icons.auto_awesome),
+                                    label: const Text("View Insights"),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.purple800,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => const InsightsScreen(),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
                               ),
                             ],
                           ),
