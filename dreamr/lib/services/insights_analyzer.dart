@@ -128,7 +128,7 @@ class InsightsAnalyzer {
         toneCues: [],
         textCues: ['died', 'death', 'goodbye', 'gone', 'left me', 'lost', 'funeral', 'grief'],
       ),
-      'Strangeness & The Uncanny': _ThemeBucket(
+      'Strange & Uncanny': _ThemeBucket(
         emoji: '🌀',
         toneCues: ['futuristic', 'uncanny', 'elegant', 'ornate'],
         textCues: ['strange', 'twisted', 'wrong', 'familiar but', 'shifted'],

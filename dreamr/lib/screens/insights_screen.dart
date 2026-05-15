@@ -611,7 +611,7 @@ class _InsightsScreenState extends State<InsightsScreen> {
         return Colors.tealAccent.shade100;
       case 'Loss & Endings':
         return Colors.brown.shade200;
-      case 'Strangeness & The Uncanny':
+      case 'Strange & Uncanny':
         return Colors.indigo.shade200;
       default:
         return Colors.deepPurple.shade200;
