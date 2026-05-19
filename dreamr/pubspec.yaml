@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 
-version: 1.0.18+25           # No need to change in build.gradle.kts or HELP SCREEN
+version: 1.0.19+26           # Android needs the build increased (+xx) No need to change in build.gradle.kts or HELP SCREEN
 
 environment:
   #sdk: ^3.7.2
@@ -155,6 +155,7 @@ flutter:
     - assets/images/question3.png
     - assets/images/missing.png
     - assets/images/google_logo.svg
+    - assets/images/token.svg
     - assets/sound/tell_me_about.mp3
     - assets/gcloud-key.json
     - assets/privacy_policy.txt

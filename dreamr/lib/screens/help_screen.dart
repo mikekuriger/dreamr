@@ -214,7 +214,7 @@ class HelpScreen extends StatelessWidget {
                             ? 'v${snap.data!.version}+${snap.data!.buildNumber}'
                             : '';
                         return Text(
-                          'Dreamr ✨ $version\n© 2025 Michael Kuriger',
+                          'Dreamr ✨ $version\n© 2026 Michael Kuriger',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Color.fromARGB(200, 122, 209, 255),

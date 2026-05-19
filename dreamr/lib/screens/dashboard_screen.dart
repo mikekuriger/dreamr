@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';  // Added for rootBundle
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:just_audio/just_audio.dart';
@@ -1326,23 +1327,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                         onPressed: (_isOffline || _loading || _imageGenerating)
                           ? null
-                          : _readyToGenerateImage
-                              ? () async {
-                                  if ((_totalCredits ?? 0) < 4) {
-                                    Navigator.pushNamed(context, '/subscription');
-                                    return;
-                                  }
-                                  setState(() {
-                                    _imageGenerating = true;
-                                    _readyToGenerateImage = false;
-                                  });
-                                  final prefs = await SharedPreferences.getInstance();
-                                  final imageStyle = prefs.getString('selected_image_style');
-                                  await _generateDreamImage(_lastDreamId!, imageStyle: imageStyle);
-                                }
-                              : (canAnalyze
-                                  ? _submitDream
-                                  : () => Navigator.pushNamed(context, '/subscription')),
+                          : (canAnalyze
+                              ? _submitDream
+                              : () => Navigator.pushNamed(context, '/subscription')),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -1368,9 +1355,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       ? "Generating Image"
                                       : _loading
                                           ? "Analyzing..."
-                                          : _readyToGenerateImage
-                                              ? "Generate Image"
-                                              : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
+                                          : canAnalyze ? "Analyze my dream" : "Upgrade to Pro",
                             ),
                           ],
                         ),
@@ -1396,6 +1381,87 @@ class _DashboardScreenState extends State<DashboardScreen>
                             p: const TextStyle(color: Colors.black87),
                           ),
                         ),
+
+                        // Free-user "Generate Image" CTA — anchored to this
+                        // dream's analysis so the offer is unambiguous and
+                        // doesn't bleed across navigation.
+                        if (_readyToGenerateImage &&
+                            _isPro != true &&
+                            !_imageGenerating &&
+                            (_dreamImagePath == null || _dreamImagePath!.isEmpty)) ...[
+                          const SizedBox(height: 14),
+                          Material(
+                            color: AppColors.purple600.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () async {
+                                if ((_totalCredits ?? 0) < 4) {
+                                  Navigator.pushNamed(context, '/subscription');
+                                  return;
+                                }
+                                setState(() {
+                                  _imageGenerating = true;
+                                  _readyToGenerateImage = false;
+                                });
+                                final prefs = await SharedPreferences.getInstance();
+                                final imageStyle = prefs.getString('selected_image_style');
+                                await _generateDreamImage(
+                                  _lastDreamId!,
+                                  imageStyle: imageStyle,
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppColors.purple600.withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    SvgPicture.asset(
+                                      'assets/images/token.svg',
+                                      width: 28,
+                                      height: 28,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Generate Dream Image',
+                                            style: TextStyle(
+                                              color: Colors.black87,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Uses 4 tokens · ${_totalCredits ?? 0} remaining',
+                                            style: const TextStyle(
+                                              color: Colors.black54,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      color: AppColors.purple600.withValues(alpha: 0.7),
+                                      size: 22,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
 
                         if (_isPro == true && _lastDiscussLoading) ...[
                           const SizedBox(height: 12),

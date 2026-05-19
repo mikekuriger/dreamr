@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <defs>
+    <radialGradient id="coinFace" cx="38%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#FFE988"/>
+      <stop offset="55%" stop-color="#F2B83A"/>
+      <stop offset="100%" stop-color="#B8801C"/>
+    </radialGradient>
+  </defs>
+  <!-- coin body -->
+  <circle cx="12" cy="12" r="11" fill="url(#coinFace)" stroke="#7A5410" stroke-width="0.8"/>
+  <!-- inner rim -->
+  <circle cx="12" cy="12" r="8.6" fill="none" stroke="#7A5410" stroke-width="0.55" opacity="0.55"/>
+  <!-- 4-point sparkle in Dreamr purple -->
+  <path d="M12 6 L13.5 10.5 L18 12 L13.5 13.5 L12 18 L10.5 13.5 L6 12 L10.5 10.5 Z" fill="#3B1F6E"/>
+  <!-- subtle highlight -->
+  <ellipse cx="8.8" cy="8.4" rx="2.6" ry="1.4" fill="#FFFFFF" opacity="0.35" transform="rotate(-32 8.8 8.4)"/>
+</svg>

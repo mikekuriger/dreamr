@@ -5,8 +5,13 @@
 //  - icon:    a single emoji to render in the symbols grid
 //  - meaning: short interpretation shown when the user taps the tile
 //  - keywords: lowercase tokens we look for in dream text. Matching is
-//              substring-based, so "water" will match "waters" and "watery"
-//              but not "underwater" unless we list it explicitly.
+//              word-boundary based, so "water" matches the word "water"
+//              but NOT "waterfall" or "underwater". List inflections
+//              explicitly if you want them (e.g. "waters", "watery").
+//  - excludePhrases: optional. Idiomatic phrases that contain a keyword
+//              but don't carry the symbol's meaning (e.g. "dead end" for
+//              the Death symbol). The matcher strips these from the
+//              haystack before running keyword regexes.
 //
 // Keep this list curated, not exhaustive. Quality > coverage. If a symbol
 // fires on almost every dream it stops being a signal.
@@ -16,12 +21,14 @@ class DreamSymbolDef {
   final String icon;
   final String meaning;
   final List<String> keywords;
+  final List<String> excludePhrases;
 
   const DreamSymbolDef({
     required this.name,
     required this.icon,
     required this.meaning,
     required this.keywords,
+    this.excludePhrases = const [],
   });
 }
 
@@ -116,6 +123,15 @@ const List<DreamSymbolDef> kDreamSymbols = [
     meaning:
         'Death in dreams rarely means literal death. It usually marks the end of a chapter — a habit, role, or relationship that is changing form.',
     keywords: ['death', 'dying', 'dead', 'funeral', 'grave'],
+    excludePhrases: [
+      'dead end', 'dead-end', 'dead ends', 'dead-ends',
+      'dead weight', 'dead silence', 'dead silent',
+      'dead of night', 'dead of winter',
+      'dead serious', 'dead set', 'dead heat', 'dead even',
+      'play dead', 'playing dead', 'played dead',
+      'dead tired', 'dead to the world', 'dead in the water',
+      'dying to', 'dying for', 'dying laughing',
+    ],
   ),
   DreamSymbolDef(
     name: 'Fire',

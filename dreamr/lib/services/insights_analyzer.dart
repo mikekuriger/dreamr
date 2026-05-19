@@ -4,10 +4,15 @@
 // object that the InsightsScreen renders. No network, no async work.
 //
 // Strategy:
-//  - Pull the searchable text out of each dream (text + summary + analysis + notes).
-//  - For each symbol in the curated dictionary, count how many dreams it appears in
-//    (we count *dreams*, not raw occurrences, so a single dream that says "water"
-//    five times doesn't dominate).
+//  - Pull the searchable text out of each dream (text + summary + notes).
+//    The AI `analysis` field is intentionally excluded — it uses figurative
+//    language ("you're being tested", "the death of an old chapter") that
+//    would tag symbols which the dream itself never mentions.
+//  - For each symbol in the curated dictionary, count how many dreams it
+//    appears in, using word-boundary matching so `test` doesn't fire on
+//    "latest" and `dead` doesn't fire on "deadline".
+//  - We count *dreams*, not raw occurrences, so a single dream that says
+//    "water" five times doesn't dominate.
 //  - For themes, we bucket dreams into emotional families using their tone string
 //    and a small set of keyword cues.
 //  - For patterns, we surface simple structural signals:
@@ -64,19 +69,31 @@ class InsightsAnalyzer {
   }
 
   // Combine the searchable surfaces of a dream into one lowercase string.
+  // Deliberately excludes `analysis` — see file header.
   static String _haystack(Dream d) {
-    return '${d.text}\n${d.summary}\n${d.analysis}\n${d.notes}'.toLowerCase();
+    return '${d.text}\n${d.summary}\n${d.notes}'.toLowerCase();
   }
 
   static List<SymbolHit> _findSymbols(List<Dream> dreams) {
     final hits = <SymbolHit>[];
+    final hays = dreams.map(_haystack).toList(growable: false);
 
     for (final def in kDreamSymbols) {
+      final patterns = def.keywords
+          .map((kw) => RegExp(r'\b' + RegExp.escape(kw) + r'\b'))
+          .toList(growable: false);
+      final exclusions = def.excludePhrases
+          .map((p) => RegExp(r'\b' + RegExp.escape(p) + r'\b'))
+          .toList(growable: false);
       final matched = <Dream>[];
-      for (final d in dreams) {
-        final hay = _haystack(d);
-        final found = def.keywords.any((kw) => hay.contains(kw));
-        if (found) matched.add(d);
+      for (var i = 0; i < dreams.length; i++) {
+        var hay = hays[i];
+        for (final ex in exclusions) {
+          hay = hay.replaceAll(ex, ' ');
+        }
+        if (patterns.any((re) => re.hasMatch(hay))) {
+          matched.add(dreams[i]);
+        }
       }
       if (matched.length >= _minSymbolCount) {
         hits.add(SymbolHit(
@@ -100,36 +117,50 @@ class InsightsAnalyzer {
     final buckets = <String, _ThemeBucket>{
       'Anxiety & Escape': _ThemeBucket(
         emoji: '😰',
+        description:
+            'Dreams in this family often surface when something in waking life feels out of your control. Notice what you are running from — it usually points to what you have been avoiding rather than what is actually dangerous.',
         toneCues: ['nightmar', 'dark', 'fear', 'anxious'],
         textCues: ['running', 'hiding', 'trapped', 'escape', 'scared', 'afraid', 'terrified'],
       ),
       'Wonder & Discovery': _ThemeBucket(
         emoji: '✨',
+        description:
+            'These dreams have an open, exploratory quality — magic, beauty, the unfamiliar. They often arrive when you are growing or shifting perspective, even quietly.',
         toneCues: ['whimsical', 'surreal', 'mythic', 'ancient'],
         textCues: ['discovered', 'magical', 'beautiful', 'glowing', 'shimmering', 'curious'],
       ),
       'Connection & Love': _ThemeBucket(
         emoji: '💗',
+        description:
+            'Dreams of reunion, warmth, or family usually reflect the relationships your mind is holding onto. Sometimes the message is gratitude; sometimes it is longing.',
         toneCues: ['romantic', 'nostalgic'],
         textCues: ['kissed', 'embrace', 'loved', 'together', 'reunited', 'family'],
       ),
       'Power & Adventure': _ThemeBucket(
         emoji: '⚡',
+        description:
+            'Heroic, decisive dreams often reflect a part of you that wants to take action. Pay attention to what you are fighting for — that is often what matters most to you right now.',
         toneCues: ['epic', 'heroic'],
         textCues: ['fought', 'won', 'rescued', 'climbed', 'battle', 'leader'],
       ),
       'Peace & Stillness': _ThemeBucket(
         emoji: '🌿',
+        description:
+            'Quiet, floating, serene dreams are themselves the message. They tend to surface when something difficult has begun to settle, or when your mind is making space.',
         toneCues: ['peaceful', 'gentle'],
         textCues: ['quiet', 'calm', 'still', 'floating', 'gentle', 'serene'],
       ),
       'Loss & Endings': _ThemeBucket(
         emoji: '🍂',
+        description:
+            'Dreams of death, goodbyes, or things slipping away rarely mean what they show literally. They usually mark a chapter ending — a role, habit, or relationship transforming.',
         toneCues: [],
         textCues: ['died', 'death', 'goodbye', 'gone', 'left me', 'lost', 'funeral', 'grief'],
       ),
       'Strange & Uncanny': _ThemeBucket(
         emoji: '🌀',
+        description:
+            'When things feel twisted, wrong, or familiar-but-off, your mind is often probing something it has not named yet. The strangeness is the signal — the discomfort is doing work.',
         toneCues: ['futuristic', 'uncanny', 'elegant', 'ornate'],
         textCues: ['strange', 'twisted', 'wrong', 'familiar but', 'shifted'],
       ),
@@ -155,6 +186,7 @@ class InsightsAnalyzer {
       results.add(ThemeWeight(
         label: label,
         emoji: bucket.emoji,
+        description: bucket.description,
         weight: bucket.dreams.length / total,
         dreams: bucket.dreams,
       ));
@@ -296,12 +328,14 @@ class InsightsAnalyzer {
 
 class _ThemeBucket {
   final String emoji;
+  final String description;
   final List<String> toneCues;
   final List<String> textCues;
   final List<Dream> dreams = [];
 
   _ThemeBucket({
     required this.emoji,
+    required this.description,
     required this.toneCues,
     required this.textCues,
   });

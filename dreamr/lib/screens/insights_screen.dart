@@ -93,7 +93,14 @@ class _InsightsScreenState extends State<InsightsScreen> {
     }
   }
 
-  void _openFilteredDreams(BuildContext context, String title, List<Dream> dreams) {
+  void _openFilteredDreams(
+    BuildContext context,
+    String title,
+    List<Dream> dreams, {
+    String? description,
+    String? leadingEmoji,
+    String? headline,
+  }) {
     if (dreams.isEmpty) return;
     if (dreams.length == 1) {
       Navigator.push(
@@ -105,7 +112,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => _FilteredDreamsScreen(title: title, dreams: dreams),
+        builder: (_) => _FilteredDreamsScreen(
+          title: title,
+          dreams: dreams,
+          description: description,
+          leadingEmoji: leadingEmoji,
+          headline: headline,
+        ),
       ),
     );
   }
@@ -446,9 +459,16 @@ class _InsightsScreenState extends State<InsightsScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // height: 1.0 tightens the emoji's line box (emojis ship with
-                // generous default line height that can push the cell over).
-                Text(s.icon, style: const TextStyle(fontSize: 26, height: 1.0)),
+                // SizedBox+FittedBox bounds the rendered emoji height so a
+                // fallback glyph (iOS Simulator without Apple Color Emoji)
+                // can't push the cell over.
+                SizedBox(
+                  height: 28,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(s.icon, style: const TextStyle(fontSize: 26, height: 1.0)),
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Flexible(
                   child: Text(
@@ -520,7 +540,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () {
                       Navigator.pop(sheetCtx);
-                      _openFilteredDreams(context, '${s.icon} ${s.name}', s.dreams);
+                      _openFilteredDreams(
+                        context,
+                        '${s.icon} ${s.name}',
+                        s.dreams,
+                        description: s.meaning,
+                        leadingEmoji: s.icon,
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -554,7 +580,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: GestureDetector(
-              onTap: () => _openFilteredDreams(context, '${t.emoji} ${t.label}', t.dreams),
+              onTap: () => _openFilteredDreams(
+                context,
+                '${t.emoji} ${t.label}',
+                t.dreams,
+                description: t.description,
+                leadingEmoji: t.emoji,
+              ),
               child: Row(
                 children: [
                   Text(t.emoji, style: const TextStyle(fontSize: 18)),
@@ -646,7 +678,13 @@ class _InsightsScreenState extends State<InsightsScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: () => _openFilteredDreams(context, p.headline, p.dreams),
+                onPressed: () => _openFilteredDreams(
+                  context,
+                  '🔁 Recurring Pattern',
+                  p.dreams,
+                  headline: p.headline,
+                  description: p.detail,
+                ),
                 icon: const Icon(Icons.arrow_forward, size: 16, color: Colors.white),
                 label: Text(
                   'View these ${p.dreams.length} ${p.dreams.length == 1 ? 'dream' : 'dreams'}',
@@ -773,11 +811,24 @@ class _InsightsScreenState extends State<InsightsScreen> {
 class _FilteredDreamsScreen extends StatelessWidget {
   final String title;
   final List<Dream> dreams;
+  final String? description;
+  final String? leadingEmoji;
+  final String? headline;
 
-  const _FilteredDreamsScreen({required this.title, required this.dreams});
+  const _FilteredDreamsScreen({
+    required this.title,
+    required this.dreams,
+    this.description,
+    this.leadingEmoji,
+    this.headline,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hasDescription = description != null && description!.trim().isNotEmpty;
+    final hasHeadline = headline != null && headline!.trim().isNotEmpty;
+    final showCard = hasDescription || hasHeadline;
+
     return Scaffold(
       backgroundColor: AppColors.purple900,
       appBar: AppBar(
@@ -793,11 +844,74 @@ class _FilteredDreamsScreen extends StatelessWidget {
       ),
       body: SafeArea(
         top: false,
-        child: DreamJournalWidget(
-          filteredDreams: dreams,
-          autoExpandSingle: false,
-          embeddedInScrollView: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(4),
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              if (showCard) _descriptionCard(hasHeadline, hasDescription),
+              DreamJournalWidget(
+                filteredDreams: dreams,
+                autoExpandSingle: false,
+                embeddedInScrollView: true,
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  // Soft card that surfaces the meaning (and, for patterns, a bold lead
+  // line) at the top of the filtered list, so the user keeps the
+  // interpretive context while scrolling through the dreams that matched.
+  Widget _descriptionCard(bool hasHeadline, bool hasDescription) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(5, 6, 5, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.black.withAlpha(200),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppColors.purple400.withValues(alpha: 0.5),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (leadingEmoji != null && leadingEmoji!.isNotEmpty) ...[
+            Text(leadingEmoji!, style: const TextStyle(fontSize: 28)),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (hasHeadline)
+                  Text(
+                    headline!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      height: 1.35,
+                    ),
+                  ),
+                if (hasHeadline && hasDescription) const SizedBox(height: 6),
+                if (hasDescription)
+                  Text(
+                    description!,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13.5,
+                      height: 1.45,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

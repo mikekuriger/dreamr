@@ -1077,14 +1077,6 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
                                           ),
                                         ),
                                       ),
-                                      Container(
-                                        width: 8, height: 8,
-                                        decoration: BoxDecoration(
-                                          color: toneIndicatorColor(dream.tone),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
                                       Text(toneSymbol(dream.tone), style: const TextStyle(fontSize: 13)),
                                       const SizedBox(width: 4),
                                     ],

@@ -20,12 +20,14 @@ class SymbolHit {
 class ThemeWeight {
   final String label;
   final String emoji;
+  final String description;
   final double weight;
   final List<Dream> dreams;
 
   const ThemeWeight({
     required this.label,
     required this.emoji,
+    required this.description,
     required this.weight,
     required this.dreams,
   });
