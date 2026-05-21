@@ -854,6 +854,7 @@ class _FilteredDreamsScreen extends StatelessWidget {
                 filteredDreams: dreams,
                 autoExpandSingle: false,
                 embeddedInScrollView: true,
+                allowSwipeActions: false,
               ),
             ],
           ),

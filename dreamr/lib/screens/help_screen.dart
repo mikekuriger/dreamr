@@ -88,11 +88,12 @@ class HelpScreen extends StatelessWidget {
                 // '• Use the microphone button to record your dream vocally\n'
                 '• Choose your preferred dream interpreter personality\n'
                 '• Tap "Analyze my dream" to get your personalized interpretation\n'
-                '• Wait while the AI generates an image based on your dream\n'
+                '• Pro users: a dream image is generated automatically\n'
+                '• Free users: tap "Generate Dream Image" inside the analysis card to create one (uses 4 tokens)\n'
                 '• Chat with the AI to explore your dream further\n'
                 '• Add personal notes about your dream\n'
                 '• Share your dream with others\n\n'
-                'Free users have limited dream analyses per week. Upgrade to Pro for unlimited analyses.',
+                'Free users get 2 dream analyses per week. Upgrade to Pro for unlimited analyses.',
             ),
             
             // Dream Interpreters Section
@@ -117,14 +118,30 @@ class HelpScreen extends StatelessWidget {
                 '• Access it through the "Journal" tab in the navigation bar\n'
                 '• View your dreams chronologically\n'
                 '• Tap on any entry to see the full analysis and image\n'
+                '• Use the search bar to find a dream by keyword\n'
                 '• Swipe down to refresh your journal with new entries\n\n'
                 'Managing journal entries:\n\n'
                 '• Swipe left on any entry to reveal a Delete option\n'
                 '• Swipe right on any entry to reveal a Hide option\n'
                 '• Hidden dreams are removed from your journal but not deleted\n'
-                '• Recover hidden dreams anytime via the hamburger menu → Hidden Dreams',
+                '• Recover hidden dreams anytime via the hamburger menu → Hidden Dreams\n'
+                '• Swipe actions are available on the main Journal tab only — dreams shown inside Insights filters are read-only',
             ),
-            
+
+            // Insights Section
+            _buildSection(
+              title: 'Insights',
+              icon: Icons.insights,
+              content: 'Discover the patterns hiding inside your dream journal:\n\n'
+                '• Access through the "Insights" tab in the navigation bar\n'
+                '• Recurring Symbols — see which images, animals, and objects appear most often across your dreams, each with a short interpretation\n'
+                '• Emotional Themes — view the moods that thread through your nights (Anxiety, Wonder, Connection, Power, Peace, Loss, Strangeness)\n'
+                '• Recurring Patterns — surface clusters of symbols and feelings that show up together\n'
+                '• Deep Interpretation — once you\'ve logged enough dreams, Dreamr writes a personal reflection on what your dreams may be telling you, refreshed weekly\n'
+                '• Tap any card to see the dreams that contributed to that pattern\n\n'
+                'Insights grows richer the more you journal — keep adding dreams to unlock deeper analysis.',
+            ),
+
             // Dream Gallery Section
             _buildSection(
               title: 'Dream Gallery',
@@ -178,12 +195,19 @@ class HelpScreen extends StatelessWidget {
             _buildSection(
               title: 'Credits & Subscriptions',
               icon: Icons.stars,
-              content: 'Understanding your dream credits:\n\n'
-                '• Free users get 3 dream images\n'
-                '• Free users get 2 dream analyses per week\n'
-                '• Pro subscribers get unlimited dream analyses with images\n'
-                '• Pro subscribers also unlock additional dream interpreter personalities and image styles\n'
-                '• Upgrade through the hamburger menu → Subscription\n',
+              content: 'How credits and subscriptions work:\n\n'
+                'New to Dreamr?\n'
+                '• 5 days of free Pro access when you first start — unlimited analyses, automatic dream images, and every interpreter and image style\n\n'
+                'Free tier (after the trial):\n'
+                '• 2 dream analyses per week, refreshed every Sunday\n'
+                '• Dream images use tokens — 4 tokens per image\n'
+                '• Tap "Generate Dream Image" inside an analysis to spend tokens, or purchase a token pack from Subscription\n\n'
+                'Pro subscribers:\n'
+                '• Unlimited dream analyses\n'
+                '• A dream image generated automatically with every analysis — no token cost\n'
+                '• Access to all dream interpreter personalities and image styles\n'
+                '• Discuss any dream further with the AI\n\n'
+                '• Manage or upgrade your plan via the hamburger menu → Subscription',
             ),
             
             // Contact Section

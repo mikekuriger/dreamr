@@ -26,6 +26,10 @@ class DreamJournalWidget extends StatefulWidget {
   final List<Dream>? filteredDreams;
   final bool autoExpandSingle;
   final bool embeddedInScrollView;
+  // Swipe-to-hide/delete is unreliable when the widget is rendering a
+  // filtered slice (e.g. from Insights) because deletions don't round-trip
+  // back to the source list. Callers in those contexts should pass false.
+  final bool allowSwipeActions;
 
   const DreamJournalWidget({
     super.key,
@@ -33,6 +37,7 @@ class DreamJournalWidget extends StatefulWidget {
     this.filteredDreams,
     this.autoExpandSingle = false,
     this.embeddedInScrollView = true,
+    this.allowSwipeActions = true,
   });
 
   @override
@@ -900,7 +905,7 @@ class DreamJournalWidgetState extends State<DreamJournalWidget> {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Slidable(
                 key: ValueKey(dream.id),
-                enabled: !isExpanded,
+                enabled: !isExpanded && widget.allowSwipeActions,
                 startActionPane: ActionPane(
                   motion: const DrawerMotion(),
                   extentRatio: 0.3,
