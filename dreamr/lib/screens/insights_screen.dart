@@ -7,6 +7,7 @@ import 'package:dreamr/services/api_service.dart';
 import 'package:dreamr/services/insights_analyzer.dart';
 import 'package:dreamr/screens/dream_detail_screen.dart';
 import 'package:dreamr/widgets/dream_journal_widget.dart';
+import 'package:dreamr/widgets/report_content_sheet.dart';
 import 'package:dreamr/theme/colors.dart';
 
 class InsightsScreen extends StatefulWidget {
@@ -768,6 +769,20 @@ class _InsightsScreenState extends State<InsightsScreen> {
                     style: TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
+              // Report this AI-written interpretation (AI-content policy).
+              InkWell(
+                onTap: () => ReportContentSheet.show(
+                  context,
+                  contentType: ReportContentType.insight,
+                  contentId: '${insight.id}',
+                  contentSnapshot: insight.narrative,
+                ),
+                borderRadius: BorderRadius.circular(4),
+                child: const Padding(
+                  padding: EdgeInsets.only(left: 8, top: 2, bottom: 2),
+                  child: Icon(Icons.flag_outlined, size: 16, color: Colors.white60),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 2),

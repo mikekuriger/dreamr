@@ -15,6 +15,7 @@ import 'package:dreamr/screens/subscription_screen.dart';
 import 'package:dreamr/screens/life_events_screen.dart';
 import 'package:dreamr/screens/help_screen.dart';
 import 'package:dreamr/screens/interpreters_screen.dart';
+import 'package:dreamr/widgets/report_content_sheet.dart';
 import 'package:dreamr/screens/image_style_selection_screen.dart';
 import 'package:dreamr/screens/insights_screen.dart';
 // import 'package:dreamr/constants.dart';
@@ -123,6 +124,13 @@ class _MainScaffoldState extends State<MainScaffold> {
         break;
       case '/login':
         Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        break;
+      case 'report':
+        await ReportContentSheet.show(
+          context,
+          contentType: ReportContentType.other,
+          allowContentTypeChange: true,
+        );
         break;
       case 'logout':
         await performLogout(context);
@@ -245,6 +253,16 @@ class _MainScaffoldState extends State<MainScaffold> {
               Icon(Icons.help_outline, color: Colors.white),
               SizedBox(width: 8),
               Text('Help', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'report',
+          child: Row(
+            children: [
+              Icon(Icons.flag_outlined, color: Colors.white),
+              SizedBox(width: 8),
+              Text('Report content', style: TextStyle(color: Colors.white)),
             ],
           ),
         ),

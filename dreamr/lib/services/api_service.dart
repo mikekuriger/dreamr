@@ -1108,6 +1108,48 @@ class ApiService {
       throw Exception('Failed to fetch interpreters: ${response.statusMessage}');
     }
   }
+
+  // Send a user-submitted report about AI-generated content.
+  // Required by Google Play's AI-Generated Content policy.
+  //
+  // contentType: "analysis" | "image" | "insight" | "discuss" | "other"
+  // category:    "sexual" | "hate" | "violence" | "child_safety" |
+  //              "misinfo" | "other"
+  // contentId, comment, contentSnapshot are optional; the backend
+  // accepts None/null for any of them.
+  static Future<void> reportContent({
+    required String contentType,
+    required String category,
+    String? contentId,
+    String? comment,
+    String? contentSnapshot,
+  }) async {
+    final body = <String, dynamic>{
+      'content_type': contentType,
+      'category': category,
+    };
+    if (contentId != null && contentId.isNotEmpty) body['content_id'] = contentId;
+    if (comment != null && comment.isNotEmpty) body['comment'] = comment;
+    if (contentSnapshot != null && contentSnapshot.isNotEmpty) {
+      // Server caps at 2KB; truncate defensively client-side too.
+      body['content_snapshot'] = contentSnapshot.length > 2048
+          ? contentSnapshot.substring(0, 2048)
+          : contentSnapshot;
+    }
+
+    final response = await DioClient.dio.post(
+      '/api/reports',
+      data: body,
+      options: Options(
+        contentType: Headers.jsonContentType,
+        validateStatus: (_) => true,
+      ),
+    );
+    final code = response.statusCode ?? 0;
+    if (code == 200) return;
+    final data = response.data is Map ? Map<String, dynamic>.from(response.data) : const {};
+    throw Exception(data['error']?.toString() ?? 'Failed to submit report');
+  }
 }
 
 

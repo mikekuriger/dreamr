@@ -210,6 +210,18 @@ class HelpScreen extends StatelessWidget {
                 '• Manage or upgrade your plan via the hamburger menu → Subscription',
             ),
             
+            // Reporting Inappropriate Content
+            _buildSection(
+              title: 'Report Content',
+              icon: Icons.flag_outlined,
+              content: 'Dreamr screens AI output for safety, but if something feels wrong you can report it from the app:\n\n'
+                '• Open the menu (top-right) and tap "Report content"\n'
+                '• Pick what you were viewing and a reason\n'
+                '• Optionally add a comment, then Submit\n'
+                '• The content is hidden from you and reviewed within 24 hours\n\n'
+                'The Deep Interpretation card on the Insights tab also has a small flag icon for one-tap reporting.',
+            ),
+
             // Contact Section
             _buildSection(
               title: 'Contact Support',
