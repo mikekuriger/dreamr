@@ -10,7 +10,6 @@ import 'package:dreamr/constants.dart';
 import 'package:dreamr/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dreamr/models/dream.dart';
-import 'package:dreamr/screens/insights_screen.dart';
 import 'package:dreamr/theme/colors.dart';
 
 // Custom enum to replace missing CalendarFormat
@@ -888,25 +887,6 @@ class _DreamJournalScreenState extends State<DreamJournalScreen> {
                                         MaterialPageRoute(
                                           builder: (context) =>
                                               const MainScaffold(initialIndex: 0),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                  ElevatedButton.icon(
-                                    icon: const Icon(Icons.auto_awesome),
-                                    label: const Text("View Insights"),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.purple800,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => const InsightsScreen(),
                                         ),
                                       );
                                     },
