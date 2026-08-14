@@ -68,7 +68,7 @@ class LifeEvent {
       'occurred_at': occurredAt.toIso8601String(),
       'title': title,
       'details': details,
-      'tags': tags != null ? tags!.join(',') : null,
+      'tags': tags?.join(','),
       'created_at': createdAt.toIso8601String(),
     };
   }

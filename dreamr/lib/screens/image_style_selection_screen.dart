@@ -606,7 +606,7 @@ class _DreamToneSection extends StatefulWidget {
 }
 
 class _DreamToneSectionState extends State<_DreamToneSection> {
-  final ExpansionTileController _controller = ExpansionTileController();
+  final ExpansibleController _controller = ExpansibleController();
   bool _expanded = false;
 
   void collapse() {

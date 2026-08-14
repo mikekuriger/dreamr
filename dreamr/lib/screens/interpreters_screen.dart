@@ -338,7 +338,7 @@ class _InterpretersScreenState extends State<InterpretersScreen> {
             ],
             const SizedBox(height: 4),
             // Filter buttons
-            Container(
+            SizedBox(
               height: 60,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,

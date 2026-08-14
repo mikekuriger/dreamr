@@ -186,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // If you have usage stats, plug them here. Otherwise safe fallbacks:
       final int? streakDays = null;
-      final DateTime? lastLogUtc = DateTime.now().toUtc();
+      final DateTime lastLogUtc = DateTime.now().toUtc();
 
       await NotificationService().rescheduleAllOnLogin(
         displayName: first,

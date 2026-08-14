@@ -85,7 +85,6 @@ class HelpScreen extends StatelessWidget {
               content: 'To analyze a dream:\n\n'
                 '• Tap the "Add Dream" button in the navigation bar\n'
                 '• Describe your dream in detail (characters, settings, emotions, events)\n'
-                // '• Use the microphone button to record your dream vocally\n'
                 '• Choose your preferred dream interpreter personality\n'
                 '• Tap "Analyze my dream" to get your personalized interpretation\n'
                 '• Pro users: a dream image is generated automatically\n'

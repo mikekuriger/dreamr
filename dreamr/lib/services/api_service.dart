@@ -265,8 +265,8 @@ class ApiService {
   }) async {
     final payload = <String, dynamic>{
       'plan_id': planId,
-      if (paymentProvider != null) 'payment_provider': paymentProvider,
-      if (receiptData != null) 'receipt_data': receiptData,
+      'payment_provider': ?paymentProvider,
+      'receipt_data': ?receiptData,
     };
 
     try {
@@ -856,13 +856,13 @@ class ApiService {
   }) async {
     final formDataMap = <String, dynamic>{
       // only append if not null
-      if (email != null) 'email': email,
+      'email': ?email,
       'first_name': firstName,
-      if (gender != null) 'gender': gender,
+      'gender': ?gender,
       if (birthdate != null) 'birthdate': birthdate.toIso8601String().split('T')[0], // backend expects yyyy-MM-dd
-      if (timezone != null) 'timezone': timezone,
+      'timezone': ?timezone,
       'enable_audio': enableAudio ? '1' : '0',
-      if (avatarFile != null) 'avatar': avatarFile,
+      'avatar': ?avatarFile,
     };
 
     final formData = FormData.fromMap(formDataMap);

@@ -521,7 +521,7 @@ class NotificationService {
     if (lastLogUtc == null) return;
 
     // Helper to schedule a one-shot at lastLog + N days @ local fireTime
-    Future<void> _one(int id, int days, String body) async {
+    Future<void> one(int id, int days, String body) async {
       final localBase = tz.TZDateTime.from(lastLogUtc, tz.local);
       final scheduled = tz.TZDateTime(
         tz.local,
@@ -564,9 +564,9 @@ class NotificationService {
     String p4 = NotificationMessages.personalized(displayName: who, streakDays: streakDays, daysSinceLast: 4);
     String p7 = NotificationMessages.personalized(displayName: who, streakDays: streakDays, daysSinceLast: 7);
 
-    await _one(_inactive2Id, 2, p2);
-    await _one(_inactive4Id, 4, p4);
-    await _one(_inactive7Id, 7, p7);
+    await one(_inactive2Id, 2, p2);
+    await one(_inactive4Id, 4, p4);
+    await one(_inactive7Id, 7, p7);
   }
 
 /// Reschedule all notifications on user login with latest data.

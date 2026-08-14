@@ -1102,7 +1102,7 @@ class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
                                 ],
                               ),
                             );
-                          }).toList(),
+                          }),
                         ],
                         if (_imageGenerating) ...[
                           const SizedBox(height: 12),

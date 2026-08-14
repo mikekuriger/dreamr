@@ -484,7 +484,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               final isIpadLike = mq.size.shortestSide >= 600;
 
                               final effectiveMq = isIpadLike
-                                  ? mq.copyWith(textScaleFactor: mq.textScaleFactor / 1.25)
+                                  ? mq.copyWith(textScaler: TextScaler.linear(mq.textScaler.scale(1.0) / 1.25))
                                   : mq;
 
                               return MediaQuery(

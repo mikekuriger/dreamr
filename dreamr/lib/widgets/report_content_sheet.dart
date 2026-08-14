@@ -198,7 +198,7 @@ class _ReportContentSheetState extends State<ReportContentSheet> {
                 ),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<ReportContentType>(
-                  value: _type,
+                  initialValue: _type,
                   dropdownColor: AppColors.purple900,
                   iconEnabledColor: Colors.white70,
                   style: const TextStyle(color: Colors.white),
