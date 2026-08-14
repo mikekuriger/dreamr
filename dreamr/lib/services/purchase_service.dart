@@ -233,8 +233,13 @@ class PurchaseService {
       final String productId = purchaseDetails.productID;
 
       if (Platform.isIOS) {
-        // For StoreKit 2, serverVerificationData is the JWS meant for your server.
-        receipt = purchaseDetails.verificationData.localVerificationData;
+        // For StoreKit 2, serverVerificationData is the signed JWS meant for
+        // your server (localVerificationData is the *unverified* JSON —
+        // fine for on-device use, but the backend can't cryptographically
+        // check it came from Apple). Fixed Aug 2026: this used to read
+        // localVerificationData, which silently sent unsigned data to the
+        // backend for every purchase.
+        receipt = purchaseDetails.verificationData.serverVerificationData;
         // Google Play purchase token – used with Google Play Developer API.
       } else if (Platform.isAndroid) {
         receipt = purchaseDetails.verificationData.serverVerificationData;

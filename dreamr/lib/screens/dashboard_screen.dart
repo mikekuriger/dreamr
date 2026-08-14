@@ -1,9 +1,7 @@
 // screens/dashboard_screen.dart
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';  // Added for rootBundle
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,11 +22,6 @@ import 'package:dreamr/state/selected_interpreter_model.dart';
 import 'package:dreamr/screens/interpreters_screen.dart';  // For InterpreterHelper
 import 'package:dreamr/services/route_observer.dart';
 import 'dart:io';
-import 'dart:async';
-import 'dart:math' as math;
-import 'package:permission_handler/permission_handler.dart';
-import 'package:google_speech/google_speech.dart';
-import 'package:flutter_sound/flutter_sound.dart';
 
 
 class DashboardScreen extends StatefulWidget {
@@ -49,114 +42,9 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
-    with SingleTickerProviderStateMixin, RouteAware {
+class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
   final TextEditingController _controller = TextEditingController();
   final AudioPlayer _player = AudioPlayer();
-
-  late final AnimationController _micAnim;
-  late final Animation<double> _micScale;
-  late final Animation<double> _micOpacity;
-
-  // Compute RMS of 16-bit little-endian PCM audio data
-  double _rmsInt16Le(Uint8List bytes) {
-    if (bytes.length < 2) return 0.0;
-    final bd = ByteData.sublistView(bytes);
-    double acc = 0.0;
-    int n = 0;
-    for (int i = 0; i + 1 < bytes.length; i += 2) {
-      final s = bd.getInt16(i, Endian.little); // -32768..32767
-      acc += (s * s).toDouble();
-      n++;
-    }
-    if (n == 0) return 0.0;
-    return math.sqrt(acc / n);
-  }
-
-  // Speech recognition variables
-  late SpeechToText _speech;
-
-  // Auto-stop on silence
-  Timer? _silenceTimer;
-  DateTime _lastHeard = DateTime.now();
-  final Duration _silenceTimeout = const Duration(seconds: 3);
-
-  // Simple VAD (noise calibration)
-  bool _vadCalibrating = false;
-  int _vadCalibFrames = 0;
-  double _noiseFloor = 0.0;
-
-  // Audio recording variables
-  FlutterSoundRecorder? _audioRecorder;
-  StreamController<List<int>>? _googleAudioCtl; 
-  StreamController<Uint8List>? _micCtl;
-  
-  StreamSubscription? _recognitionSub;
-
-  bool _isRecording = false;
-  String _committedText = '';
-  String _interimText = '';
-  DateTime _lastInterimAt = DateTime.fromMillisecondsSinceEpoch(0);
-
-  String _applySpokenPunctuation(String input) {
-    var s = ' $input ';
-
-    final rules = <RegExp, String>{
-      RegExp(r'\b(ellipsis|dot dot dot)\b', caseSensitive: false): ' … ',
-      RegExp(r'\b(question mark)\b',        caseSensitive: false): ' ? ',
-      RegExp(r'\b(exclamation (?:point|mark))\b', caseSensitive: false): ' ! ',
-      RegExp(r'\b(semicolon)\b',            caseSensitive: false): ' ; ',
-      RegExp(r'\b(colon)\b',                caseSensitive: false): ' : ',
-      RegExp(r'\b(dash|hyphen)\b',          caseSensitive: false): ' - ',
-      RegExp(r'\b(comma)\b',                caseSensitive: false): ' , ',
-      RegExp(r'\b(period|full stop)\b',     caseSensitive: false): ' . ',
-      RegExp(r'\b(new line)\b',             caseSensitive: false): '\n',
-      RegExp(r'\b(new paragraph)\b',        caseSensitive: false): '\n\n',
-      RegExp(r'\b(open quote)\b',           caseSensitive: false): ' “',
-      RegExp(r'\b(close quote)\b',          caseSensitive: false): '” ',
-    };
-    rules.forEach((re, sym) => s = s.replaceAll(re, sym));
-
-    // Use replaceAllMapped for “$1”-style fixes
-    s = s.replaceAllMapped(RegExp(r'\s+([,.;:!?…])'), (m) => '${m[1]} ');
-    s = s.replaceAllMapped(RegExp(r'\s+([”“])'),      (m) => '${m[1]}');
-    s = s.replaceAllMapped(RegExp(r'([\(])\s+'),       (m) => '${m[1]}');
-    s = s.replaceAllMapped(RegExp(r'\s+([\)])'),       (m) => '${m[1]}');
-
-    s = s.replaceAll(RegExp(r'\s+\n'), '\n');
-    s = s.replaceAll(RegExp(r'\n\s+'), '\n');
-    s = s.replaceAll(RegExp(r' {2,}'), ' ');
-    s = s.trim();
-
-    // Optional capitalization
-    s = s.replaceAllMapped(RegExp(r'(^|[.!?\n]\s+)([a-z])'), (m) => '${m[1]}${m[2]!.toUpperCase()}');
-
-    return s;
-  }
-
-  void _renderTextField() {
-    final committed = _committedText.trimRight();
-    final interim   = _interimText.trimLeft();
-    final shown     = (interim.isEmpty ? committed : '$committed $interim'.trim());
-
-    // Mark only the interim as "composing" so platforms visually hint it's provisional.
-    final start = committed.length + (committed.isEmpty || interim.isEmpty ? 0 : 1);
-    final end   = shown.length;
-
-    final value = TextEditingValue(
-      text: shown,
-      selection: TextSelection.collapsed(offset: shown.length),
-      composing: (interim.isEmpty || end <= start)
-          ? TextRange.empty
-          : TextRange(start: start, end: end),
-    );
-
-    if (_controller.value.text != value.text ||
-        _controller.value.selection.baseOffset != value.selection.baseOffset) {
-      _controller.value = value;
-    }
-  }
-
 
   String? _userName;
   bool _enableAudio = false;
@@ -197,7 +85,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     _isOffline = widget.offlineNotifier?.value ?? false;
     _loadUserName();
     _loadDraftText();
-    _initSpeechApi();
     _loadQuota();
     _loadInitialSelectedInterpreter();
     _checkInterpreterTip();
@@ -205,14 +92,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     // Listen to changes in selected interpreter
     final interpreterModel = Provider.of<SelectedInterpreterModel>(context, listen: false);
     interpreterModel.addListener(_onInterpreterChanged);
-
-    _micAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _micScale = Tween<double>(begin: 1.0, end: 1.25)
-        .chain(CurveTween(curve: Curves.easeInOutCubic))
-        .animate(_micAnim);
-    _micOpacity = Tween<double>(begin: 0.5, end: 1.0)
-        .chain(CurveTween(curve: Curves.easeInOut))
-        .animate(_micAnim);
 
     _controller.addListener(() {
       if (_controller.text.trim().isNotEmpty) {
@@ -246,15 +125,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     _player.dispose();
-    _audioRecorder?.closeRecorder();
-    _googleAudioCtl?.close();
-    _micCtl?.close();
     widget.refreshTrigger.removeListener(_refreshFromTrigger);
     widget.tabActiveNotifier?.removeListener(_onTabActiveChanged);
     widget.offlineNotifier?.removeListener(_onOfflineChanged);
     dreamrRouteObserver.unsubscribe(this);
-    _stopRecording();
-    _micAnim.dispose();
     _tipOverlay?.remove();
 
     // Remove interpreter listener
@@ -288,81 +162,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
   
-  // Initialize speech recognition with Google Cloud Speech API
-  Future<void> _initSpeechApi() async {
-    try {
-      _audioRecorder = FlutterSoundRecorder();
-      await _audioRecorder!.openRecorder();
-      // iOS stability tweaks
-      try {
-        await _audioRecorder!.setSubscriptionDuration(const Duration(milliseconds: 50));
-      } catch (_) {}
-
-      final raw = await rootBundle.loadString('assets/gcloud-key.json');
-      final sa  = ServiceAccount.fromString(raw);
-      _speech   = SpeechToText.viaServiceAccount(sa);
-
-      debugPrint('STT init ok');
-    } catch (e) {
-      debugPrint('STT init failed: $e');
-      _showErrorSnackBar('Failed to initialize speech recognition');
-    }
-  }
-
-  
-  // Stop recording and clean up
-  Future<void> _stopRecording() async {
-    if (!_isRecording) return;
-    try {
-      debugPrint('stopping recorder…');
-      if (_audioRecorder?.isRecording == true) {
-        await _audioRecorder!.stopRecorder();
-      }
-      debugPrint('recorder stopped');
-
-      await _recognitionSub?.cancel();
-      _recognitionSub = null;
-
-      if (_googleAudioCtl != null && !_googleAudioCtl!.isClosed) {
-        await _googleAudioCtl!.close();
-      }
-      if (_micCtl != null && !_micCtl!.isClosed) {
-        await _micCtl!.close();
-      }
-      _googleAudioCtl = null;
-      _micCtl = null;
-    } catch (e, st) {
-      debugPrint('stop error: $e\n$st');
-    } finally {
-      if (mounted) setState(() => _isRecording = false);
-      _silenceTimer?.cancel();
-      _silenceTimer = null;
-      _micAnim.stop();
-      _micAnim.value = 0.0;
-    }
-  }
-  
-  // Request microphone permission
-  Future<bool> _requestMicPermission() async {
-    var status = await Permission.microphone.status;
-    
-    if (status.isDenied) {
-      status = await Permission.microphone.request();
-    }
-    
-    if (status.isPermanentlyDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Microphone permission is required for voice recording. Please enable it in app settings."),
-          duration: Duration(seconds: 4),
-        ),
-      );
-      return false;
-    }
-    
-    return status.isGranted;
-  }
-
   void _refreshFromTrigger() async {
     // clear old results
     setState(() {
@@ -910,179 +709,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  
-  // Show error snackbar - only for critical errors
-  void _showErrorSnackBar(String message) {
-    if (mounted) {
-      // Only show errors that would prevent recording
-      if (message.contains('initialize') || message.contains('permission')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      } else {
-        // Just log other errors without showing popup
-        debugPrint('Speech error (no popup): $message');
-      }
-    }
-  }
-
-  // Start voice recording and transcription
-  Future<void> _startVoiceRecording() async {
-    // toggle
-    if (_isRecording) {
-      await _stopRecording();
-      return;
-    }
-
-    // mic permission once
-    final granted = await _requestMicPermission();
-    if (!granted) return;
-
-    // client ready
-    if (_audioRecorder == null) await _initSpeechApi();
-
-    // stop any audio that may hold session
-    try { await _player.stop(); } catch (_) {}
-
-    // state
-    _committedText = _controller.text;
-    _interimText = '';
-    _micAnim.repeat(reverse: true);
-    setState(() => _isRecording = true);
-
-    // controllers
-    _googleAudioCtl?.close();
-    _micCtl?.close();
-    _googleAudioCtl = StreamController<List<int>>();
-    _micCtl = StreamController<Uint8List>.broadcast();
-
-    // bridge mic → chunk → Google
-    _micCtl!.stream.listen((Uint8List data) {
-      if (data.isEmpty) return;
-
-      // --- VAD: compute RMS on 16-bit little-endian PCM
-      final rms = _rmsInt16Le(data);
-      if (_vadCalibrating) {
-        // ≈ first 1s: learn noise floor using your 50ms subscription duration
-        _vadCalibFrames++;
-        _noiseFloor += rms;
-        if (_vadCalibFrames >= 20) {
-          _noiseFloor /= _vadCalibFrames;
-          _vadCalibrating = false;
-          debugPrint('VAD noiseFloor=${_noiseFloor.toStringAsFixed(1)}');
-        }
-      } else {
-        // Dynamic threshold a bit above ambient
-        final threshold = (_noiseFloor * 2.5).clamp(150.0, 800.0);
-        if (rms > threshold) _lastHeard = DateTime.now();
-      }
-
-      // --- Forward to Google in ≤24 KB chunks
-      const max = 24 * 1024;
-      for (var i = 0; i < data.length; i += max) {
-        final end = (i + max > data.length) ? data.length : i + max;
-        _googleAudioCtl?.add(data.sublist(i, end));
-      }
-    }, onError: (e) {
-      debugPrint('mic stream error: $e');
-    });
-
-
-    // recognition config
-    final cfg = RecognitionConfig(
-      encoding: AudioEncoding.LINEAR16,
-      sampleRateHertz: 16000,
-      audioChannelCount: 1,
-      languageCode: 'en-US',
-      // enableAutomaticPunctuation: true,
-      enableAutomaticPunctuation: false,
-      maxAlternatives: 1,
-      model: RecognitionModel.basic,
-      speechContexts: [
-        SpeechContext([
-          'period', 'full stop', 'comma', 'question mark',
-          'exclamation point', 'exclamation mark',
-          'semicolon', 'colon',
-          'dash', 'hyphen', 'ellipsis', 'dot dot dot',
-          'quote', 'open quote', 'close quote',
-          'new line', 'new paragraph',
-        ]),
-      ],
-    );
-
-    // streaming config
-    final scfg = StreamingRecognitionConfig(
-      config: cfg,
-      interimResults: true,
-      singleUtterance: false,
-    );
-
-    // start Google stream
-    debugPrint('creating google stream…');
-    final responses = _speech.streamingRecognize(scfg, _googleAudioCtl!.stream);
-    _recognitionSub = responses.listen((resp) {
-      for (final r in resp.results) {
-        if (r.alternatives.isEmpty) continue;
-        var t = r.alternatives.first.transcript;
-        if (t.isEmpty) continue;
-
-        if (r.isFinal) {
-          // Map punctuation ONLY on finals
-          t = _applySpokenPunctuation(t);
-
-          _committedText = _committedText.isEmpty ? t : '$_committedText $t';
-          _interimText = '';
-          _renderTextField();
-        } else {
-          // Interim: debounce + optional stability filter to reduce churn
-          final now = DateTime.now();
-          final debounceOk = now.difference(_lastInterimAt).inMilliseconds >= 120;
-          final stabilityOk = (r.stability >= 0.7); // if field present; otherwise ignore
-          if (debounceOk && stabilityOk) {
-            _interimText = t;
-            _lastInterimAt = now;
-            _renderTextField();
-          }
-        }
-      }
-    }, onError: (e, st) {
-      _interimText = '';
-      _renderTextField();
-      _showErrorSnackBar('Speech recognition error');
-      _stopRecording();
-    });
-
-    // start mic AFTER stream exists
-    await _audioRecorder!.startRecorder(
-      codec: Codec.pcm16,
-      sampleRate: 16000,
-      numChannels: 1,
-      toStream: _micCtl!.sink, // required StreamSink<Uint8List>
-    );
-    debugPrint('recorder started: ${_audioRecorder!.isRecording}');
-
-    // --- Reset silence/VAD state
-    _lastHeard = DateTime.now();
-    _vadCalibrating = true;
-    _vadCalibFrames = 0;
-    _noiseFloor = 0.0;
-
-    // --- Kick off periodic silence check
-    _silenceTimer?.cancel();
-    _silenceTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      if (!_isRecording) return;
-      final idle = DateTime.now().difference(_lastHeard) > _silenceTimeout;
-      if (idle) {
-        debugPrint('auto-stop: silence > ${_silenceTimeout.inSeconds}s');
-        await _stopRecording();
-      }
-    });
-  }
-
 
 // sharing
 // Anchor key for share button
@@ -1230,51 +856,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 // Button row with mic and analyze
                 Row(
                   children: [
-                    // Voice recording button - COMMENTED OUT
-                    /*
-                    SizedBox(
-                      // height: 56,         // match Analyze button height
-                      // width: 56,          // square mic button
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // glow while recording
-                          if (_isRecording)
-                            FadeTransition(
-                              opacity: _micOpacity,
-                              child: Container(
-                                // width: 56, height: 56,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      blurRadius: 18,
-                                      spreadRadius: 2,
-                                      color: Colors.redAccent.withValues(alpha: 0.45),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              fixedSize: const Size(55, 54),  // enforce size
-                              backgroundColor: _isRecording ? Colors.redAccent : AppColors.purple600,
-                              foregroundColor: Colors.white,
-                              padding: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: (_loading || _imageGenerating) ? null : _startVoiceRecording,
-                            child: ScaleTransition(
-                              scale: _isRecording ? _micScale : AlwaysStoppedAnimation(1.0),
-                              child: Icon(_isRecording ? Icons.stop : Icons.mic, size: 24, color: Colors.white),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    */
-
                     // Interpreter icon
                     if (_selectedInterpreter != null)
                       GestureDetector(
