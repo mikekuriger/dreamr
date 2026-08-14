@@ -59,7 +59,6 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTicker
 
   late final AnimationController _anim;
   late final Animation<double> _titleFade;
-  late final Animation<Offset> _titleSlide;
   late final Animation<double> _bodyFade;
   late final Animation<Offset> _bodySlide;
   late final Animation<double> _buttonsFade;
@@ -82,8 +81,7 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTicker
     );
 
     _titleFade = CurvedAnimation(parent: _anim, curve: const Interval(0.00, 0.45, curve: Curves.easeOut));
-    _titleSlide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(
-      CurvedAnimation(parent: _anim, curve: const Interval(0.00, 0.45, curve: Curves.easeOut)),
+      CurvedAnimation(parent: _anim, curve: const Interval(0.00, 0.45, curve: Curves.easeOut)
     );
 
     _bodyFade = CurvedAnimation(parent: _anim, curve: const Interval(0.15, 0.70, curve: Curves.easeOut));
@@ -214,7 +212,6 @@ class _WelcomeTourScreenState extends State<WelcomeTourScreen> with SingleTicker
                 FadeTransition(
                   opacity: _titleFade,
                   // child: SlideTransition(
-                  //   position: _titleSlide,
                   child: ScaleTransition(
                     scale: Tween<double>(begin: 0.98, end: 1.0).animate(_titleFade),
                     child: Text(
