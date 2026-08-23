@@ -1,7 +1,0 @@
-cd ~mk7193/dream/dreamr
-
-flutter clean
-flutter pub get
-flutter build apk --debug
-flutter install --debug
-adb logcat | grep "GS:"
